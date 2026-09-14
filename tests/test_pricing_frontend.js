@@ -56,6 +56,21 @@ assert.match(vm.runInContext('costSummary(reference)',sandbox),/自定义 &lt;�
 sandbox.items=[{total_tokens:100,costs:{usd:unit(5)}},{total_tokens:1000,costs:{usd:unit(1)}}];
 vm.runInContext("state.unit='usd'",sandbox);
 assert.equal(vm.runInContext('sorted(items)[0].total_tokens',sandbox),100);
+sandbox.tableRow={...sandbox.example,id:'s',title:'Session',models:['test'],project:'/project',
+  threads:1,turns:1,number:1,requests:1,agent_tokens:123,tools:null};
+for(const expression of [
+  'overview({summary:example,daily:[],models:[],sessions:[tableRow]})',
+  'sessionView({id:"s",summary:example,turns:[tableRow]})']){
+  const html=vm.runInContext(expression,sandbox);
+  assert.match(html,/美元估算（API）/, 'Keep the USD summary');
+  const table=html.split('class="panel table-panel"')[1];
+  const head=table.match(/<thead>(.*?)<\/thead>/s)[1];
+  const body=table.match(/<tbody>(.*?)<\/tbody>/s)[1];
+  assert.doesNotMatch(head,/美元估算|子代理 Token/);
+  assert.doesNotMatch(body,/\$2.00|title="123"/);
+  assert.equal((head.match(/<th>/g)||[]).length,9);
+  assert.equal((body.match(/<td[ >]/g)||[]).length,9);
+}
 const card={input_per_million:10,cached_multiplier:.1,cache_write_multiplier:1.25,
   output_multiplier:5,reasoning_multiplier:5,fast_multiplier:2,long_context_threshold:272000,
   long_input_multiplier:2,long_output_multiplier:1.5};

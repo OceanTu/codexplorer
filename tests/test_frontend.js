@@ -40,6 +40,10 @@ sandbox.fixture = {summary:{requests:2,input_tokens:200,cached_input_tokens:100,
 vm.runInContext("state.kind='turn'; state.session='s'; state.turn='t'; state.data=fixture; render();", sandbox);
 assert.match(element('#content').innerHTML, /请求明细/);
 assert.match(element('#content').innerHTML, /输入上下文/);
+const requestTable=element('#content').innerHTML.split('class="panel table-panel"')[1];
+assert.doesNotMatch(requestTable, /<th>美元估算<\/th>|<th>子代理 Token<\/th>/);
+assert.equal((requestTable.match(/<th>/g)||[]).length,11);
+assert.equal((requestTable.match(/<td[ >]/g)||[]).length,22);
 assert.doesNotMatch(element('#content').innerHTML, /data-unit=/, 'Turn context chart remains in tokens; do not show ineffective unit controls');
 assert.doesNotMatch(element('#content').innerHTML, /对话时间线|conversation-timeline|turn-timeline|request-conversation/);
 assert.match(element('#turn-navigation').innerHTML, /read_file/);
@@ -57,6 +61,7 @@ setImmediate(async()=>{
   assert.deepEqual(requests, ['/api/requests/response%3Ar1/messages']);
   assert.match(element('#content').innerHTML, /aria-expanded="true"/);
   assert.equal((element('#content').innerHTML.match(/class="request-conversation"/g)||[]).length, 1);
+  assert.match(element('#content').innerHTML, /colspan="11"/);
   assert.match(panel.innerHTML, /上行 · 新增输入/);
   assert.match(panel.innerHTML, /下行 · 助手输出/);
   assert.doesNotMatch(element('#content').innerHTML, /对话时间线|conversation-timeline|turn-timeline/);
