@@ -4,7 +4,7 @@
 
 ## 安装包与分发
 
-普通使用推荐下载 `dist/token-lens-v0.2.0-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
+普通使用推荐下载 `dist/token-lens-v0.2.1-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。
 
@@ -78,6 +78,8 @@ python3 -B app.py uninstall-hooks
 标记说明：`counter_reset` 表示旧累计值回退，改用本次值；`prior_usage_unattributed` 表示首次累计值包含之前的未知基数；`inconsistent_subsets` 表示子集计数异常；`total_mismatch` 表示报告总量与输入加输出不一致。单次明细保留 `reported_total` 以便核对。`unknown` 模型表示日志缺失模型信息；不会用当前模型猜历史模型。
 
 ## 费率与费用估算
+
+Credits 估算统一显示 1 位小数，底层计算、排序和美元精度不变。摘要卡和各层 Credits 明细显示相对于 **50,400 credits** 的占比，基准为用户指定的“7 天 ×20 套餐等价额度”。占比 = 当前筛选下未舍入的 Credits ÷ 50,400，不按筛选天数折算，也不限制在 100%；小于 0.1% 的正值显示 `<0.1%`。未定价记录不算作零占比，混合结果明确标注已知部分。这是等价参考，不是官方套餐剩余额度。
 
 左侧进入 **费率设置**。所有倍率相对于普通输入基价；基价留空表示未知，填 0 表示明确免费。保存采用整份配置原子写入，检测其他页面的并发修改；编辑期间不自动刷新覆盖表单。模型 ID 精确匹配，支持手动添加其他模型，不会猜测版本号别名的价格。
 

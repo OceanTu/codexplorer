@@ -20,6 +20,8 @@
 .cost-breakdown td,.cost-breakdown th{padding:9px 15px}
 .cost-cell{font-variant-numeric:tabular-nums;font-size:11px;color:#496a53;min-width:100px}
 .cost-cell small{display:block;font-size:9px;color:#9d773e}
+.cost-cell .credit-share{color:var(--muted)}
+.credit-reference{display:block;color:var(--green);font-variant-numeric:tabular-nums}
 .pricing-intro{max-width:950px;color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:22px}
 .pricing-intro p+p{margin-top:10px}.pricing-intro b{font-weight:550;color:#3b5944}
 .pricing-actions{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 0;background:var(--bg,#f6f8f4);margin-bottom:16px;flex-wrap:wrap}
