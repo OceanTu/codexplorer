@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -66,6 +66,12 @@ def connect(data_dir):
             if version < 2:
                 # Usage is accounting history; files is only a rebuildable cursor.
                 # Replay once to repair positions saved by INSERT OR IGNORE.
+                con.execute('DELETE FROM files')
+            if version < 3:
+                from .tools import SCHEMA as TOOL_SCHEMA
+                for statement in TOOL_SCHEMA.split(';'):
+                    if statement.strip():
+                        con.execute(statement)
                 con.execute('DELETE FROM files')
             con.execute('PRAGMA user_version=%d' % SCHEMA_VERSION)
             con.commit()

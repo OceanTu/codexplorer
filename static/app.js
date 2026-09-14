@@ -12,6 +12,60 @@ const state = {range:'7', from:null, to:null, page:0, sort:'total', data:null, k
 let controller;
 let refreshing=false;
 const messageCache=new Map();
+const treeDisclosure=new Map();
+let sidebarCollapsed=false;
+try {const saved=localStorage.getItem('token-lens-sidebar');sidebarCollapsed=saved?saved==='collapsed':matchMedia('(max-width:850px)').matches;} catch(e) { /* Storage may be disabled. */ }
+function setSidebar(collapsed) {
+  sidebarCollapsed=collapsed;
+  document.body.classList.toggle('sidebar-collapsed',collapsed);
+  const button=$('#sidebar-toggle');
+  button.textContent=collapsed?'›':'‹';
+  button.setAttribute('aria-expanded',String(!collapsed));
+  button.setAttribute('aria-label',collapsed?'展开侧边栏':'收起侧边栏');
+  button.title=collapsed?'展开侧边栏':'收起侧边栏';
+  try {localStorage.setItem('token-lens-sidebar',collapsed?'collapsed':'expanded');} catch(e) { /* Optional preference only. */ }
+}
+$('#sidebar-toggle').addEventListener('click',()=>setSidebar(!sidebarCollapsed));
+setSidebar(sidebarCollapsed);
+
+function toolOutput(s) {
+  return s.missing_results && !s.output_chars?'返回未记录':compact(s.output_chars)+' 字符'+(s.missing_results?' + 未记录':'');
+}
+function toolCell(s) {
+  if(!s)return '<span class="tool-muted">待索引</span>';
+  if(!s.calls)return `<span class="tool-muted">${s.unavailable_requests?'定位不可用':'未记录工具'}</span>`;
+  const names=s.tools.map(t=>t.name);
+  return `<div class="tool-cell" title="${esc(names.join(' · '))} · 返回文本 ${full(s.output_chars)} 字符 / ${full(s.output_bytes)} B"><span>${esc(names.slice(0,2).join(' · '))}${names.length>2?' …':''}</span><small>${full(s.calls)} 次 · ${toolOutput(s)}${s.unavailable_requests?' · 部分未知':''}</small></div>`;
+}
+function toolOverview(s) {
+  if(!s)return '';
+  return `<details class="tool-overview"><summary>工具 <b>${full(s.calls)} 次</b><span>返回文本 ${toolOutput(s)}${s.unavailable_requests?' · '+full(s.unavailable_requests)+' 条定位不可用':''}</span></summary><div class="tool-chips">${s.tools.map(t=>`<span title="${full(t.output_bytes)} B；${full(t.missing_results)} 次调用没有返回记录"><b>${esc(t.name)}</b> ${full(t.calls)} 次 · ${toolOutput(t)}</span>`).join('')||'<span>没有可关联的工具调用</span>'}</div><p>按可见返回文本统计字符和 UTF-8 字节，不含媒体原始数据。工具返回不等于模型输出 token；摘要按日志区间关联。</p></details>`;
+}
+function renderTurnNavigation() {
+  const nav=$('#turn-navigation');
+  nav.hidden=state.kind!=='turn';
+  if(nav.hidden){nav.innerHTML='';return;}
+  const rows=sliced(state.data.requests), groups=new Map(),scroll=nav.scrollTop;
+  for(const row of rows){const key=row.thread_id+'/'+row.turn_id;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+  const open=(key,defaultValue=false)=>(treeDisclosure.has(key)?treeDisclosure.get(key):defaultValue)?'open':'';
+  const jump=(r,label,extra='')=>`<button data-jump-request="${esc(r.id)}" ${extra} title="定位请求 #${r.number} · 模型输出 ${full(r.output_tokens)} tokens">${label}</button>`;
+  const node=r=>{
+    const s=r.tools, tools=s?.tools||[], key='request:'+r.id;
+    const label=`<span class="tree-request-number">#${r.number}</span><span class="tree-request-label">${s?.calls?full(s.calls)+' 次工具':s?.unavailable_requests?'定位不可用':s?'未记录工具':'待索引'}</span>`;
+    const active=state.open.has(r.id)?' selected':'';
+    if(!tools.length)return `<li class="tree-request${active}">${jump(r,label)}</li>`;
+    return `<li class="tree-request${active}"><details data-tree-key="${esc(key)}" ${open(key)}><summary><span>${label}</span>${jump(r,'↗','class="tree-locate" aria-label="定位请求 #'+r.number+'"')}</summary><ul>${tools.map(t=>`<li>${jump(r,`<span class="tree-tool-name">${esc(t.name)}</span><small>${toolOutput(t)}</small>`,'class="tree-tool"')}</li>`).join('')}</ul></details></li>`;
+  };
+  nav.innerHTML=`<div class="tree-heading"><span>本轮导航</span><small>${full(state.data.requests.length)} 条请求</small></div><nav aria-label="本轮请求导航">${[...groups].map(([key,items])=>`<details class="tree-execution" data-tree-key="${esc(key)}" ${open(key,true)}><summary>${items[0].is_agent?(items[0].source==='guardian_review'?'自动审核':'子代理'):'主代理'} <small>· ${esc(items[0].turn_id.slice(-6))}</small><span>${items.length}</span></summary><ul>${items.map(node).join('')}</ul></details>`).join('')||'<p class="tree-empty">当前筛选无请求</p>'}</nav><div class="tree-pager"><button data-page="prev" ${state.page===0?'disabled':''} aria-label="导航上一页">‹</button><span>${state.page+1} / ${Math.max(1,Math.ceil(state.data.requests.length/50))}</span><button data-page="next" ${(state.page+1)*50>=state.data.requests.length?'disabled':''} aria-label="导航下一页">›</button></div><p class="tree-note">展开查看工具，↗ 打开单条对话</p>`;
+  nav.scrollTop=scroll;
+}
+function jumpRequest(id) {
+  const index=state.data?.requests?.findIndex(r=>r.id===id)??-1;
+  if(index<0)return;
+  state.page=Math.floor(index/50);state.open.clear();state.open.add(id);render();
+  document.getElementById('messages-'+state.data.requests[index].number)?.scrollIntoView({block:'start'});
+}
+document.addEventListener('toggle',e=>{if(e.target.dataset?.treeKey)treeDisclosure.set(e.target.dataset.treeKey,e.target.open);},true);
 
 function query() {
   const q = new URLSearchParams();
@@ -89,8 +143,8 @@ function overview(d) {
 function sessionView(d) {
   const items=sorted(d.turns), max=Math.max(1,...items.map(x=>x.total_tokens));
   const top=items.length?[...items].sort((a,b)=>b.total_tokens-a.total_tokens)[0]:null;
-  const rows=sliced(items).map(r=>`<tr class="clickable" data-route="${routeLink(d.id,r.id)}"><td><span class="tag">Turn ${r.number}</span><div class="row-subtitle">${date(r.first_at)}</div></td><td class="turn-preview"><a href="${routeLink(d.id,r.id)}">${esc(r.preview||'此 turn 没有可用的用户摘要')}</a><div class="row-subtitle">${esc(r.models.join(' · '))} · 记录跨度 ${duration(r.duration_seconds)} · ${r.execution_turns} 个执行 turn</div></td><td>${full(r.requests)}</td>${usageCell(r.total_tokens,max)}<td>${pct(r.cache_hit_rate)}</td><td title="${full(r.agent_tokens)}">${compact(r.agent_tokens)}</td><td>${statusBadge(r.status)}</td><td class="arrow">›</td></tr>`);
-  return metrics(d.summary)+(top?`<div class="insight"><span aria-hidden="true">↗</span><div>消耗最高：<a href="${routeLink(d.id,top.id)}"><strong>Turn ${top.number}</strong></a>，${compact(top.total_tokens)} tokens，占当前会话筛选结果的 <strong>${pct(ratio(top.total_tokens,d.summary.total_tokens))}</strong>。</div></div>`:'')+(items.length?tablePanel('Turn 明细',items.length,['Turn','用户请求 / 摘要','请求 / 记录','Token 总量','缓存命中','子代理 Token','状态',''],rows,coverage(d.summary)):empty());
+  const rows=sliced(items).map(r=>`<tr class="clickable" data-route="${routeLink(d.id,r.id)}"><td><span class="tag">Turn ${r.number}</span><div class="row-subtitle">${date(r.first_at)}</div></td><td class="turn-preview"><a href="${routeLink(d.id,r.id)}">${esc(r.preview||'此 turn 没有可用的用户摘要')}</a><div class="row-subtitle">${esc(r.models.join(' · '))} · 记录跨度 ${duration(r.duration_seconds)} · ${r.execution_turns} 个执行 turn</div></td><td>${full(r.requests)}</td>${usageCell(r.total_tokens,max)}<td>${pct(r.cache_hit_rate)}</td><td title="${full(r.agent_tokens)}">${compact(r.agent_tokens)}</td><td>${toolCell(r.tools)}</td><td>${statusBadge(r.status)}</td><td class="arrow">›</td></tr>`);
+  return metrics(d.summary)+(top?`<div class="insight"><span aria-hidden="true">↗</span><div>消耗最高：<a href="${routeLink(d.id,top.id)}"><strong>Turn ${top.number}</strong></a>，${compact(top.total_tokens)} tokens，占当前会话筛选结果的 <strong>${pct(ratio(top.total_tokens,d.summary.total_tokens))}</strong>。</div></div>`:'')+(items.length?tablePanel('Turn 明细',items.length,['Turn','用户请求 / 摘要','请求 / 记录','Token 总量','缓存命中','子代理 Token','工具 / 返回文本','状态',''],rows,coverage(d.summary)):empty());
 }
 function duration(s) {return s<60?Math.round(s)+' 秒':s<3600?(s/60).toFixed(1)+' 分钟':(s/3600).toFixed(1)+' 小时';}
 function statusBadge(s) {const labels={running:'未见结束事件',completed:'已完成',interrupted:'已中断',observed:'历史记录'};return `<span class="tag ${s==='interrupted'?'warn':''}">${labels[s]||esc(s)}</span>`;}
@@ -145,13 +199,13 @@ async function moreMessage(button) {
 }
 function requestDetailsRow(r) {
   const open=state.open.has(r.id),panelId='messages-'+r.number;
-  return `<tr><td><button class="request-toggle" data-request="${esc(r.id)}" aria-expanded="${open}" aria-controls="${panelId}">${open?'−':'＋'} #${r.number}<small>对话</small></button></td><td>${date(r.occurred_at,true)}</td><td><span class="tag ${r.is_agent?'agent':''}" title="${esc(r.thread_title)}">${r.is_agent?(r.source==='guardian_review'?'自动审核':'子代理'):'主代理'}</span><div class="row-subtitle">${esc(r.model)}${r.effort?' · '+esc(r.effort):''}</div></td><td title="${full(r.input_tokens)}">${compact(r.input_tokens)}</td><td title="${full(r.cached_input_tokens)}">${compact(r.cached_input_tokens)}</td><td title="${full(r.output_tokens)}">${compact(r.output_tokens)}</td><td title="${full(r.reasoning_output_tokens)}">${compact(r.reasoning_output_tokens)}</td><td class="cell-number" title="${full(r.total_tokens)}">${compact(r.total_tokens)}</td><td><span class="tag ${r.quality?'warn':''}" title="${esc(r.quality)}">${r.kind==='exact'?'逐次记录':'历史还原'}${r.quality?' *':''}</span></td></tr>${open?`<tr class="conversation-row" id="${panelId}"><td colspan="9"><div class="request-conversation" data-request-id="${esc(r.id)}">${messagesHTML(r.id)}</div><details class="message-provenance"><summary>原始记录信息</summary><dl class="request-details"><dt>Response ID</dt><dd>${esc(r.response_id||'旧版记录无 response_id')}</dd><dt>Thread / Turn</dt><dd>${esc(r.thread_id)} / ${esc(r.turn_id)}</dd><dt>原始文件 · 字节偏移</dt><dd>${esc(r.path)} · ${r.byte_offset}</dd><dt>统计来源</dt><dd>${esc(r.kind)}${r.quality?' · '+esc(r.quality):''}</dd><dt>缓存写入（输入子集）</dt><dd>${full(r.cache_write_input_tokens)}</dd></dl></details></td></tr>`:''}`;
+  return `<tr><td><button class="request-toggle" data-request="${esc(r.id)}" aria-expanded="${open}" aria-controls="${panelId}">${open?'−':'＋'} #${r.number}<small>对话</small></button></td><td>${date(r.occurred_at,true)}</td><td><span class="tag ${r.is_agent?'agent':''}" title="${esc(r.thread_title)}">${r.is_agent?(r.source==='guardian_review'?'自动审核':'子代理'):'主代理'}</span><div class="row-subtitle">${esc(r.model)}${r.effort?' · '+esc(r.effort):''}</div></td><td title="${full(r.input_tokens)}">${compact(r.input_tokens)}</td><td title="${full(r.cached_input_tokens)}">${compact(r.cached_input_tokens)}</td><td title="${full(r.output_tokens)}">${compact(r.output_tokens)}</td><td title="${full(r.reasoning_output_tokens)}">${compact(r.reasoning_output_tokens)}</td><td class="cell-number" title="${full(r.total_tokens)}">${compact(r.total_tokens)}</td><td>${toolCell(r.tools)}</td><td><span class="tag ${r.quality?'warn':''}" title="${esc(r.quality)}">${r.kind==='exact'?'逐次记录':'历史还原'}${r.quality?' *':''}</span></td></tr>${open?`<tr class="conversation-row" id="${panelId}"><td colspan="10"><div class="request-conversation" data-request-id="${esc(r.id)}">${messagesHTML(r.id)}</div><details class="message-provenance"><summary>原始记录信息</summary><dl class="request-details"><dt>Response ID</dt><dd>${esc(r.response_id||'旧版记录无 response_id')}</dd><dt>Thread / Turn</dt><dd>${esc(r.thread_id)} / ${esc(r.turn_id)}</dd><dt>原始文件 · 字节偏移</dt><dd>${esc(r.path)} · ${r.byte_offset}</dd><dt>统计来源</dt><dd>${esc(r.kind)}${r.quality?' · '+esc(r.quality):''}</dd><dt>缓存写入（输入子集）</dt><dd>${full(r.cache_write_input_tokens)}</dd></dl></details></td></tr>`:''}`;
 }
 
 function turnView(d) {
   const rows=sliced(d.requests).map(requestDetailsRow);
   const executionPicker = `<div class="execution-picker"><label for="execution">执行 Turn</label><select id="execution" aria-label="筛选执行 Turn"><option value="">全部 ${d.executions.length} 个（含续跑 / 子代理）</option>${d.executions.map((r,i)=>`<option value="${esc(r.id)}" ${state.execution===r.id?'selected':''}>${i+1}. ${r.is_agent?(r.source==='guardian_review'?'自动审核':'子代理'):'主代理'} · ${r.id.slice(-8)} · ${compact(r.total_tokens)} tokens</option>`).join('')}</select><span>可单独查看每个执行 turn 的消耗</span></div>`;
-  return executionPicker+metrics(d.summary)+requestChart(d.requests)+(rows.length?tablePanel('请求明细',d.requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
+  return executionPicker+toolOverview(d.tools)+metrics(d.summary)+requestChart(d.requests)+(rows.length?tablePanel('请求明细',d.requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','工具 / 返回文本','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
 }
 function collectionView(d) {
   const scan=d.scan||{}, hook=d.latest_hook, files=d.files||{};
@@ -176,6 +230,7 @@ function render() {
   $('#custom-dates').hidden=state.range!=='custom'||state.kind==='collection';
   $('#nav-overview').classList.toggle('active',state.kind!=='collection');$('#nav-collection').classList.toggle('active',state.kind==='collection');
   $('#content').innerHTML=state.kind==='overview'?overview(d):state.kind==='session'?sessionView(d):state.kind==='turn'?turnView(d):collectionView(d);
+  renderTurnNavigation();
   const execution=$('#execution');if(execution)execution.addEventListener('change',()=>{state.execution=execution.value;state.page=0;state.open.clear();load();});
   const sort=$('#table-sort');if(sort)sort.addEventListener('change',()=>{state.sort=sort.value;state.page=0;render();});
   document.querySelectorAll('.request-conversation').forEach(el=>ensureMessages(el.dataset.requestId));
@@ -223,6 +278,7 @@ function reset(all=false) {
   state.from=null;state.to=null;state.execution='';chooseRange(all?'all':'7');
 }
 document.addEventListener('click',e=>{
+  const jump=e.target.closest('[data-jump-request]');if(jump){jumpRequest(jump.dataset.jumpRequest);return;}
   const toggle=e.target.closest('[data-request]');
   if(toggle){const id=toggle.dataset.request;state.open.has(id)?state.open.delete(id):state.open.add(id);render();[...document.querySelectorAll('[data-request]')].find(b=>b.dataset.request===id)?.focus({preventScroll:true});return;}
   const retry=e.target.closest('[data-retry-messages]');if(retry){ensureMessages(retry.dataset.retryMessages,true);return;}

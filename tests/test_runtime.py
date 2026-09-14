@@ -70,6 +70,10 @@ class RuntimeTests(unittest.TestCase):
                 second = request('/api/requests/response%3Ar2/messages')[1]
                 self.assertEqual(second['context'][0]['text'], 'request')
                 self.assertEqual(second['output'][0]['text'], 'answer')
+                turn = request('/api/sessions/s/turns/t')[1]
+                self.assertEqual(turn['tools']['calls'], 1)
+                self.assertEqual(turn['tools']['output_chars'], len('tool result'))
+                self.assertEqual(turn['requests'][0]['tools']['tools'][0]['name'], 'read_file')
                 self.assertEqual(request('/api/overview')[1]['summary']['total_tokens'], 240)
             finally:
                 server.terminate(); server.wait(timeout=5)

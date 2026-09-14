@@ -9,10 +9,13 @@
 </head>
 <body>
   <aside class="sidebar">
-    <a class="brand" href="#"><span class="brand-icon">◈</span><span>Token Lens<small>CODEX USAGE EXPLORER</small></span></a>
+    <div class="sidebar-header"><a class="brand" href="#" aria-label="Token Lens 首页"><span class="brand-icon">◈</span><span class="brand-text">Token Lens<small>CODEX USAGE EXPLORER</small></span></a><button id="sidebar-toggle" aria-label="收起侧边栏" aria-expanded="true" aria-controls="sidebar-content" title="收起侧边栏">‹</button></div>
+    <div id="sidebar-content">
     <div class="nav-label">工作空间</div>
-    <nav aria-label="主导航"><a href="#" id="nav-overview" class="active"><span>▥</span>用量总览</a><a href="#collection" id="nav-collection"><span>⌁</span>采集状态</a></nav>
-    <div class="sidebar-bottom"><button id="method-button"><span>ⓘ</span> 统计口径</button><div class="local-badge">本地数据 <span>LOCAL ONLY</span></div><p>历史回填 · 增量采集<br>数据保存在这台电脑</p></div>
+    <nav aria-label="主导航"><a href="#" id="nav-overview" class="active" title="用量总览"><span>▥</span><span class="nav-text">用量总览</span></a><a href="#collection" id="nav-collection" title="采集状态"><span>⌁</span><span class="nav-text">采集状态</span></a></nav>
+    </div>
+    <div id="turn-navigation" hidden></div>
+    <div class="sidebar-bottom"><button id="method-button" aria-label="统计口径" title="统计口径"><span>ⓘ</span><span class="nav-text"> 统计口径</span></button><div class="local-badge">本地数据 <span>LOCAL ONLY</span></div><p>历史回填 · 增量采集<br>数据保存在这台电脑</p></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><div id="breadcrumb" aria-label="面包屑">工作空间 <span>/</span> 用量总览</div><div class="top-actions"><span id="live-status" role="status">正在连接…</span><button class="button" id="refresh">↻ <span>刷新数据</span></button></div></header>

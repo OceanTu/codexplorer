@@ -39,7 +39,7 @@ def sync(args, quiet=False, progress=None):
         try:
             if getattr(args, 'rebuild', False):
                 with con:
-                    for table in ('usage', 'turns', 'threads', 'files'):
+                    for table in ('usage', 'turns', 'threads', 'files', 'tool_events', 'usage_markers'):
                         con.execute('DELETE FROM ' + table)
             result = Importer(con, args.codex_home).scan(args.data_dir, progress=progress)
         finally:

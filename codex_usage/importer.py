@@ -10,6 +10,7 @@ import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
+from .tools import index_event, marker
 
 FIELDS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens',
           'output_tokens', 'reasoning_output_tokens', 'total_tokens')
@@ -115,6 +116,7 @@ class Importer:
                 model=CASE WHEN excluded.model='unknown' THEN usage.model ELSE excluded.model END,
                 effort=CASE WHEN excluded.effort='' THEN usage.effort ELSE excluded.effort END
             ''', values)
+        marker(self.con, path, offset, key)
 
     def relocate(self, response_id, path, offset):
         """Inherited/duplicate history repairs provenance without creating usage."""
@@ -123,6 +125,8 @@ class Importer:
                              (str(path), offset, 'response:' + response_id))
 
     def consume(self, d, s, path, offset):
+        # Copies and inherited ordinals still provide valid transcript metadata.
+        index_event(self.con, d, path, offset)
         t, p = d.get('type'), d.get('payload')
         if not isinstance(p, dict):
             return
@@ -246,6 +250,8 @@ class Importer:
                     state, offset, malformed = json.loads(old['state']), old['offset'], old['malformed']
             if not offset:
                 fingerprint = hashlib.sha256()
+                self.con.execute('DELETE FROM tool_events WHERE path=?', (str(path),))
+                self.con.execute('DELETE FROM usage_markers WHERE path=?', (str(path),))
             f.seek(offset)
             pending = 0
             read_bytes = 0

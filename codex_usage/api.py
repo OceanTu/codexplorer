@@ -1,6 +1,7 @@
 import json
 import time
 from datetime import datetime, timedelta
+from .tools import attach as attach_tools, combine as combine_tools
 
 TOKEN_FIELDS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens',
                 'output_tokens', 'reasoning_output_tokens', 'total_tokens')
@@ -115,6 +116,7 @@ class API:
 
     def session(self, sid, params):
         rows = self.rows(params, session=sid)
+        attach_tools(self.con, rows)
         ordinals = {r[0]: i + 1 for i, r in enumerate(self.con.execute(
             'SELECT root_turn_id FROM usage WHERE session_id=? GROUP BY root_turn_id ORDER BY MIN(occurred_at),root_turn_id', (sid,)))}
         turns = []
@@ -127,7 +129,8 @@ class API:
                               duration_seconds=items[-1]['occurred_at'] - items[0]['occurred_at'],
                               execution_turns=len({(r['thread_id'], r['turn_id']) for r in items}),
                               models=ranked_models(items),
-                              threads=len({r['thread_id'] for r in items}), **aggregate(items)))
+                              threads=len({r['thread_id'] for r in items}),
+                              tools=combine_tools(r['tools'] for r in items), **aggregate(items)))
         turns.sort(key=lambda r: r['first_at'])
         for turn in turns:
             turn['number'] = ordinals[turn['id']]
@@ -143,6 +146,8 @@ class API:
         executions.sort(key=lambda r: r['first_at'])
         if params.get('execution'):
             rows = [r for r in rows if r['turn_id'] == params['execution']]
+        attach_tools(self.con, rows)
         for i, row in enumerate(rows):
             row['number'] = i + 1
-        return dict(id=tid, session_id=sid, summary=aggregate(rows), requests=rows, executions=executions)
+        return dict(id=tid, session_id=sid, summary=aggregate(rows), requests=rows, executions=executions,
+                    tools=combine_tools(r['tools'] for r in rows))
