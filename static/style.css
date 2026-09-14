@@ -44,7 +44,7 @@
 .pricing-add input{width:440px;max-width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:5px;background:white;font-size:12px}
 .pricing-notes{padding:24px}.pricing-notes p{font-size:12px;color:var(--muted);line-height:1.9;margin:12px 0}
 .pricing-sources{display:flex;gap:15px;flex-wrap:wrap;font-size:11px;color:var(--green)}
-@media(min-width:1600px){.metrics.has-costs{grid-template-columns:repeat(6,minmax(0,1fr))}.has-costs .metric-value{font-size:27px}.has-costs .metric{padding:17px 14px}}
+@media(min-width:1600px){.has-costs .metric-value{font-size:27px}.has-costs .metric{padding:17px 14px}}
 @media(max-width:850px){.metrics.has-costs{grid-template-columns:repeat(2,minmax(0,1fr))}.rate-model>summary small{margin-left:0;width:100%}.pricing-actions{gap:8px}.rate-table th,.rate-table td{padding:10px}.pricing-notes{padding:18px}.usage-toolbar>span{display:none}}
 
 /* Compact, persistent sidebar and metadata-only request tree. */
@@ -109,3 +109,8 @@ body.sidebar-collapsed{--sidebar-width:68px}
 .credit-plan input,.credit-plan select{width:100%;min-width:0;padding:9px 11px;border:1px solid #d4dfd5;border-radius:5px;background:#fcfdfb;color:var(--ink);font-size:13px}
 .credit-preset-field{margin-bottom:16px;max-width:360px}
 .credit-plan p{margin:14px 0 0;font-size:12px;line-height:1.7;color:var(--muted)}
+
+.metric-details{margin:0 0 14px;font-size:12px;color:var(--muted)}
+.metric-details>summary{cursor:pointer;padding:4px 0;color:#52685b}
+.metric-details[open]>summary{margin-bottom:10px}
+.metric-details .metrics{margin-bottom:0}

@@ -8,7 +8,7 @@ const date = (n, detailed = false) => n ? new Date(n * 1000).toLocaleString('zh-
 const shortPath = p => p ? p.split('/').filter(Boolean).slice(-1)[0] : '未知项目';
 const ratio = (a,b) => b ? a/b : 0;
 const routeLink = (sid, tid) => '#session/' + encodeURIComponent(sid) + (tid ? '/turn/' + encodeURIComponent(tid) : '');
-const state = {range:'7', from:null, to:null, page:0, sort:'total', unit:'tokens', data:null, kind:'overview', session:null, turn:null, execution:'', open:new Set(), request:0};
+const state = {range:'7', from:null, to:null, page:0, sort:'total', unit:'tokens', data:null, kind:'overview', session:null, turn:null, execution:'', metricsExpanded:false, open:new Set(), request:0};
 try{const unit=localStorage.getItem('token-lens-unit');if(Object.hasOwn(unitLabels,unit))state.unit=unit;}catch(e){/* Optional display preference. */}
 let controller;
 let refreshing=false;
@@ -66,7 +66,7 @@ function jumpRequest(id) {
   state.page=Math.floor(index/50);state.open.clear();state.open.add(id);render();
   document.getElementById('messages-'+state.data.requests[index].number)?.scrollIntoView({block:'start'});
 }
-document.addEventListener('toggle',e=>{if(e.target.dataset?.treeKey)treeDisclosure.set(e.target.dataset.treeKey,e.target.open);},true);
+document.addEventListener('toggle',e=>{if(e.target.id==='metric-details')state.metricsExpanded=e.target.open;if(e.target.dataset?.treeKey)treeDisclosure.set(e.target.dataset.treeKey,e.target.open);},true);
 
 function query() {
   const q = new URLSearchParams();
@@ -113,7 +113,7 @@ function metric(label, value, note, primary=false, symbol='◌', raw) {
 }
 function metrics(s) {
   const costs=s.costs?['credits','usd'].map(unit=>metric(unit==='credits'?'Credits 估算':'美元估算（API）',amount(s.costs[unit].total,unit),(unit==='credits'?`<span class="credit-reference">占 ${full(creditReference().credits)}：${esc(creditsShare(s.costs[unit].total))}</span>`:'')+(s.costs[unit].unpriced_requests?`${full(s.costs[unit].unpriced_requests)} 条未定价 · 已知部分`:'按当前费率 · 非实际账单'),false,unit==='usd'?'$':'≋')).join(''):'';
-  return unitToolbar()+`<section class="metrics ${s.costs?'has-costs':''}" aria-label="用量摘要">${metric('Token 总量', compact(s.total_tokens), `${full(s.sessions)} 个 session · ${full(s.turns)} 个 turn`,true,'◇',s.total_tokens)}${costs}${metric('未缓存输入', compact(s.uncached_input_tokens), `占输入 ${pct(ratio(s.uncached_input_tokens,s.input_tokens))}` ,false,'↗',s.uncached_input_tokens)}${metric('缓存命中率', pct(s.cache_hit_rate), `${compact(s.cached_input_tokens)} 缓存输入 tokens`,false,'◷')}${metric('输出 Token',compact(s.output_tokens),`含 ${compact(s.reasoning_output_tokens)} 推理 tokens`,false,'↙',s.output_tokens)}</section>`+costSummary(s);
+  return unitToolbar()+`<section class="metrics ${s.costs?'has-costs':''}" aria-label="用量摘要">${metric('Token 总量', compact(s.total_tokens), `${full(s.sessions)} 个 session · ${full(s.turns)} 个 turn`,true,'◇',s.total_tokens)}${costs}</section><details id="metric-details" class="metric-details"${state.metricsExpanded?' open':''}><summary>更多 Token 指标</summary><section class="metrics has-costs" aria-label="其他 Token 指标">${metric('未缓存输入', compact(s.uncached_input_tokens), `占输入 ${pct(ratio(s.uncached_input_tokens,s.input_tokens))}` ,false,'↗',s.uncached_input_tokens)}${metric('缓存命中率', pct(s.cache_hit_rate), `${compact(s.cached_input_tokens)} 缓存输入 tokens`,false,'◷')}${metric('输出 Token',compact(s.output_tokens),`含 ${compact(s.reasoning_output_tokens)} 推理 tokens`,false,'↙',s.output_tokens)}</section></details>`+costSummary(s);
 }
 const legend = '<div class="legend"><span>未缓存输入</span><span class="cached">缓存输入</span><span class="output">输出</span></div>';
 function dailyChart(daily) {

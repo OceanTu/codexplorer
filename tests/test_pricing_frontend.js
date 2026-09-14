@@ -44,6 +44,19 @@ assert.equal(vm.runInContext('creditsShare(null)',sandbox),'未定价');
 assert.match(vm.runInContext('costCell(example,"credits")',sandbox),/参考占比 &lt;0.1%/);
 assert.doesNotMatch(vm.runInContext('costCell(unknown,"credits")',sandbox),/0.0%/);
 sandbox.reference={costs:{credits:unit(25200,1),usd:unit(2)}};
+const metricHtml=vm.runInContext('metrics(reference)',sandbox);
+const mainMetrics=metricHtml.match(/<section[^>]*aria-label="用量摘要"[^>]*>(.*?)<\/section>/s)[1];
+assert.equal((mainMetrics.match(/class="metric /g)||[]).length,3);
+assert.doesNotMatch(mainMetrics,/未缓存输入|缓存命中率|输出 Token/);
+assert.match(metricHtml,/<details id="metric-details" class="metric-details">/);
+assert.match(metricHtml,/<summary>更多 Token 指标<\/summary>/);
+for(const label of ['未缓存输入','缓存命中率','输出 Token']){
+  assert.ok(metricHtml.split('<details id="metric-details"')[1].includes(label));
+}
+handlers.get('toggle')({target:{id:'metric-details',open:true}});
+assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details" open>/);
+handlers.get('toggle')({target:{id:'metric-details',open:false}});
+assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details">/);
 assert.match(vm.runInContext('metrics(reference)',sandbox),/占 50,400：50.0%/);
 assert.match(vm.runInContext('metrics(reference)',sandbox),/已知部分/);
 assert.match(vm.runInContext('costSummary(reference)',sandbox),/7 天 ×20 套餐等价/);
