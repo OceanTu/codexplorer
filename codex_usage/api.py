@@ -2,6 +2,7 @@ import json
 import time
 from datetime import datetime, timedelta
 from .tools import attach as attach_tools, combine as combine_tools
+from .pricing import Pricing, aggregate_costs
 
 TOKEN_FIELDS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens',
                 'output_tokens', 'reasoning_output_tokens', 'total_tokens')
@@ -16,6 +17,7 @@ def aggregate(rows):
                   quality_warnings=sum(bool(r['quality']) for r in rows))
     result['uncached_input_tokens'] = max(0, result['input_tokens'] - result['cached_input_tokens'])
     result['cache_hit_rate'] = result['cached_input_tokens'] / result['input_tokens'] if result['input_tokens'] else 0
+    result['costs'] = aggregate_costs(rows)
     return result
 
 
@@ -72,7 +74,11 @@ class API:
           LEFT JOIN turns tr ON tr.thread_id=u.thread_id AND tr.turn_id=u.turn_id"""
         if clauses:
             sql += ' WHERE ' + ' AND '.join(clauses)
-        return [dict(r) for r in self.con.execute(sql + ' ORDER BY u.occurred_at,u.id', args)]
+        rows = [dict(r) for r in self.con.execute(sql + ' ORDER BY u.occurred_at,u.id', args)]
+        pricing = Pricing(self.con)
+        for row in rows:
+            row['costs'] = pricing.estimate(row)
+        return rows
 
     def status(self):
         row = self.con.execute("SELECT value FROM settings WHERE key='last_scan'").fetchone()

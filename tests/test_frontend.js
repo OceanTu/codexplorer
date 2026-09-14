@@ -29,6 +29,7 @@ const sandbox = {document, window:{addEventListener(){}, scrollTo(){}},
   location:{hash:''}, URLSearchParams, AbortController, setInterval(){}, setTimeout, clearTimeout,
   fetch:()=>new Promise(()=>{}), console};
 vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/pricing.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../static/app.js'), 'utf8'), sandbox);
 sandbox.fixture = {summary:{requests:2,input_tokens:200,cached_input_tokens:100,output_tokens:40,total_tokens:240},
   executions:[],requests:[1,2].map(number=>({number,id:'response:r'+number,response_id:'r'+number,
@@ -39,6 +40,7 @@ sandbox.fixture = {summary:{requests:2,input_tokens:200,cached_input_tokens:100,
 vm.runInContext("state.kind='turn'; state.session='s'; state.turn='t'; state.data=fixture; render();", sandbox);
 assert.match(element('#content').innerHTML, /请求明细/);
 assert.match(element('#content').innerHTML, /输入上下文/);
+assert.doesNotMatch(element('#content').innerHTML, /data-unit=/, 'Turn context chart remains in tokens; do not show ineffective unit controls');
 assert.doesNotMatch(element('#content').innerHTML, /对话时间线|conversation-timeline|turn-timeline|request-conversation/);
 assert.match(element('#turn-navigation').innerHTML, /read_file/);
 assert.match(element('#turn-navigation').innerHTML, /40 字符/);

@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Token Lens · Codex 用量分析</title>
-  <meta name="description" content="在本机查看 Codex session、turn 和请求的 token 用量。">
+  <meta name="description" content="在本机查看 Codex session、turn 和请求的 token、credits 与美元估算。">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <script src="/pricing.js" defer></script><script src="/app.js" defer></script>
 </head>
 <body>
   <aside class="sidebar">
     <div class="sidebar-header"><a class="brand" href="#" aria-label="Token Lens 首页"><span class="brand-icon">◈</span><span class="brand-text">Token Lens<small>CODEX USAGE EXPLORER</small></span></a><button id="sidebar-toggle" aria-label="收起侧边栏" aria-expanded="true" aria-controls="sidebar-content" title="收起侧边栏">‹</button></div>
     <div id="sidebar-content">
     <div class="nav-label">工作空间</div>
-    <nav aria-label="主导航"><a href="#" id="nav-overview" class="active" title="用量总览"><span>▥</span><span class="nav-text">用量总览</span></a><a href="#collection" id="nav-collection" title="采集状态"><span>⌁</span><span class="nav-text">采集状态</span></a></nav>
+    <nav aria-label="主导航"><a href="#" id="nav-overview" class="active" title="用量总览"><span>▥</span><span class="nav-text">用量总览</span></a><a href="#pricing" id="nav-pricing" title="费率设置" aria-label="费率设置"><span>≋</span><span class="nav-text">费率设置</span></a><a href="#collection" id="nav-collection" title="采集状态"><span>⌁</span><span class="nav-text">采集状态</span></a></nav>
     </div>
     <div id="turn-navigation" hidden></div>
     <div class="sidebar-bottom"><button id="method-button" aria-label="统计口径" title="统计口径"><span>ⓘ</span><span class="nav-text"> 统计口径</span></button><div class="local-badge">本地数据 <span>LOCAL ONLY</span></div><p>历史回填 · 增量采集<br>数据保存在这台电脑</p></div>
@@ -35,5 +35,5 @@
       <footer><span>Token Lens <b> / </b> 所有统计遵循当前筛选条件</span><span>缓存包含在输入中 · 推理包含在输出中</span></footer>
     </main>
   </div>
-  <dialog id="method"><form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form><div class="eyebrow">ACCOUNTING NOTES</div><h2>每个 token，只计一次</h2><p><strong>总量 = 输入 + 输出。</strong>缓存输入是输入的子集，推理是输出的子集，不会再加到总量中。未缓存输入 = 输入 − 缓存读取输入；如有缓存写入，它也包含在未缓存输入中。</p><p><strong>新版逐次记录：</strong>优先读取 token_usage_record，按 response_id 去重。<strong>旧版累计差分：</strong>从 token_count 的累计值还原；计数器重置或首次遇到继承值时只取 last_token_usage，并标记不确定项。旧版记录可能覆盖多次请求，因此“请求 / 记录数”不一定等于真实 API 请求数。</p><p><strong>会话与 turn：</strong>按 session_id 汇总主代理、子代理与自动审核；按 root_turn_id 归并到主 turn。无法归属的历史记录单列。模型来自当时的 turn_context，缺失显示 unknown。</p><p><strong>边界：</strong>只覆盖本机保留的日志。缺失日志、未记录的隐藏消耗和其他设备用量无法恢复。这里的 token 不是 ChatGPT 套餐额度百分比，也不是账单金额。图表使用服务所在电脑的本地日期。</p><a href="https://learn.chatgpt.com/docs/hooks" target="_blank" rel="noreferrer">OpenAI Hooks 文档 ↗</a></dialog>
+  <dialog id="method"><form method="dialog"><button class="dialog-close" aria-label="关闭">×</button></form><div class="eyebrow">ACCOUNTING NOTES</div><h2>每个 token，只计一次</h2><p><strong>总量 = 输入 + 输出。</strong>缓存输入是输入的子集，推理是输出的子集，不会再加到总量中。未缓存输入 = 输入 − 缓存读取输入；如有缓存写入，它也包含在未缓存输入中。</p><p><strong>新版逐次记录：</strong>优先读取 token_usage_record，按 response_id 去重。<strong>旧版累计差分：</strong>从 token_count 的累计值还原；计数器重置或首次遇到继承值时只取 last_token_usage，并标记不确定项。旧版记录可能覆盖多次请求，因此“请求 / 记录数”不一定等于真实 API 请求数。</p><p><strong>会话与 turn：</strong>按 session_id 汇总主代理、子代理与自动审核；按 root_turn_id 归并到主 turn。无法归属的历史记录单列。模型来自当时的 turn_context，缺失显示 unknown。</p><p><strong>边界：</strong>只覆盖本机保留的日志。缺失日志、未记录的隐藏消耗和其他设备用量无法恢复。Credits 和美元按“费率设置”中的当前值分别估算；缺少费率的记录不算成零费用。两者不相加，不等于 ChatGPT 套餐额度百分比或实际账单。图表使用服务所在电脑的本地日期。</p><a href="https://learn.chatgpt.com/docs/hooks" target="_blank" rel="noreferrer">OpenAI Hooks 文档 ↗</a></dialog>
 </body></html>

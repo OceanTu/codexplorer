@@ -5,6 +5,46 @@
 
 .status-card code{overflow-wrap:anywhere;font-size:12px}
 
+/* Cost estimates and editable rate cards. */
+.usage-toolbar{display:flex;align-items:center;gap:13px;margin-bottom:15px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.usage-toolbar>a{margin-left:auto;color:var(--green)}
+.unit-tabs{display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:7px;background:#eaf0e9}
+.unit-tabs button{padding:5px 12px;border-radius:4px;font-size:12px;color:#66786c}
+.unit-tabs button.selected{background:#fff;color:var(--green);box-shadow:0 1px 4px #193d2014}
+.metrics.has-costs{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:13px;gap:12px}
+.has-costs .metric{padding:16px 19px}.has-costs .metric-value{font-size:clamp(22px,2.3vw,34px);letter-spacing:-.7px}
+.cost-note{font-size:11px;line-height:1.8;color:var(--muted);margin:0 0 10px}
+.cost-note strong{display:block;color:#936b35;font-weight:500}.cost-note a{margin-left:8px;color:var(--green)}
+.cost-breakdown{font-size:11px;color:var(--muted);margin:0 0 23px}
+.cost-breakdown .table-wrap{margin-top:10px;border:1px solid var(--line);border-radius:6px;background:white}
+.cost-breakdown td,.cost-breakdown th{padding:9px 15px}
+.cost-cell{font-variant-numeric:tabular-nums;font-size:11px;color:#496a53;min-width:100px}
+.cost-cell small{display:block;font-size:9px;color:#9d773e}
+.pricing-intro{max-width:950px;color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:22px}
+.pricing-intro p+p{margin-top:10px}.pricing-intro b{font-weight:550;color:#3b5944}
+.pricing-actions{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;padding:12px 0;background:var(--bg,#f6f8f4);margin-bottom:16px;flex-wrap:wrap}
+.pricing-actions .save-pricing{background:#2c6142;border-color:#2c6142;color:#fff}
+.pricing-actions .save-pricing:hover{background:#214d33}
+#pricing-message{font-size:12px;color:var(--green)}#pricing-message.pricing-error{color:#aa512b}
+.rate-model{margin-bottom:14px}
+.rate-model>summary{padding:18px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rate-model>summary>span:first-of-type{font-size:14px;font-weight:600}
+.rate-model>summary small{margin-left:auto;font-size:11px;color:var(--muted)}
+.rate-mode{display:flex;align-items:center;justify-content:space-between;padding:0 22px 14px;gap:12px;font-size:12px;flex-wrap:wrap}
+.rate-mode select{padding:6px 10px;margin-left:8px;border:1px solid var(--line);border-radius:5px;background:white;font-size:12px}
+.rate-table{table-layout:fixed;white-space:normal}
+.rate-table th{width:34%;font-size:12px;line-height:1.5}.rate-table thead th{font-size:11px}
+.rate-table td{padding:12px 18px}.rate-table input{width:100%;max-width:240px;padding:8px 11px;border:1px solid #d4dfd5;border-radius:5px;color:var(--ink);background:#fcfdfb;font-size:13px;font-variant-numeric:tabular-nums}
+.rate-preview{display:block;margin-top:5px;font-size:10px;color:#7b8f7e}
+.rate-advanced{padding:15px 22px;font-size:12px;color:var(--muted)}
+.rate-model details:not([open])>summary:before{content:"＋ "}.rate-advanced .table-wrap{margin:12px -22px 0}.rate-advanced p{font-size:11px;margin-top:10px;line-height:1.8}
+.pricing-add{display:flex;gap:12px;margin:20px 0 24px;flex-wrap:wrap}
+.pricing-add input{width:440px;max-width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:5px;background:white;font-size:12px}
+.pricing-notes{padding:24px}.pricing-notes p{font-size:12px;color:var(--muted);line-height:1.9;margin:12px 0}
+.pricing-sources{display:flex;gap:15px;flex-wrap:wrap;font-size:11px;color:var(--green)}
+@media(min-width:1600px){.metrics.has-costs{grid-template-columns:repeat(6,minmax(0,1fr))}.has-costs .metric-value{font-size:27px}.has-costs .metric{padding:17px 14px}}
+@media(max-width:850px){.metrics.has-costs{grid-template-columns:repeat(2,minmax(0,1fr))}.rate-model>summary small{margin-left:0;width:100%}.pricing-actions{gap:8px}.rate-table th,.rate-table td{padding:10px}.pricing-notes{padding:18px}.usage-toolbar>span{display:none}}
+
 /* Compact, persistent sidebar and metadata-only request tree. */
 :root{--sidebar-width:264px}
 .sidebar{width:var(--sidebar-width);padding:20px 12px 14px;z-index:20;gap:0}

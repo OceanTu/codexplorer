@@ -23,6 +23,7 @@ from codex_usage.api import API
 from codex_usage.importer import Importer
 from codex_usage.messages import MessagesUnavailable, RequestMessages
 from codex_usage.store import connect
+from codex_usage.pricing import Pricing
 
 ROOT = Path(__file__).resolve().parent
 HOOK_EVENTS = ('Stop', 'SubagentStop', 'Interrupt', 'SessionEnd')
@@ -187,6 +188,8 @@ def serve(args):
                         result = api.overview(params)
                     elif path == '/api/options':
                         result = api.options()
+                    elif path == '/api/pricing':
+                        result = Pricing(con).settings()
                     elif path == '/api/status':
                         result = api.status()
                     elif path.startswith('/api/requests/') and path.endswith('/messages'):
@@ -220,7 +223,7 @@ def serve(args):
                     return self.send(500, {'error': '读取失败，请查看本地服务日志'})
                 finally:
                     con.close()
-            assets = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/favicon.svg': 'favicon.svg'}
+            assets = {'/': 'index.html', '/app.js': 'app.js', '/pricing.js': 'pricing.js', '/style.css': 'style.css', '/favicon.svg': 'favicon.svg'}
             if path not in assets:
                 return self.send(404, {'error': 'Not found'})
             asset = ROOT / 'static' / assets[path]
@@ -229,6 +232,26 @@ def serve(args):
         def do_POST(self):
             if not self.allowed() or self.headers.get('Origin') not in (None, 'http://' + self.headers.get('Host', '')) or self.headers.get('X-Token-Lens') != '1':
                 return self.send(403, {'error': 'Local access only'})
+            if self.path == '/api/pricing':
+                con = None
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < size <= 256 * 1024:
+                        return self.send(413, {'error': '费率配置大小须在 256 KB 以内'})
+                    if self.headers.get('Transfer-Encoding') or self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                        return self.send(400, {'error': '请提交 JSON 费率配置'})
+                    self.connection.settimeout(10)
+                    payload = json.loads(self.rfile.read(size))
+                    con = connect(args.data_dir)
+                    return self.send(200, Pricing(con).save(payload))
+                except (ValueError, UnicodeError) as exc:
+                    return self.send(400, {'error': str(exc)})
+                except Exception:
+                    logger.exception('Pricing save failed')
+                    return self.send(500, {'error': '费率保存失败，请查看本地服务日志'})
+                finally:
+                    if con is not None:
+                        con.close()
             if self.path != '/api/sync':
                 return self.send(404, {'error': 'Not found'})
             requested_at = time.time()

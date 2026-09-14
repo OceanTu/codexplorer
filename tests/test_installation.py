@@ -122,6 +122,14 @@ class InstallationTests(unittest.TestCase):
         data = self.wait_usage()
         self.assertEqual(data['summary']['total_tokens'], 120)
         self.assertEqual(data['status']['version'], BASE_VERSION)
+        from codex_usage.pricing import Pricing
+        from codex_usage.store import connect
+        con = connect(self.root / 'data')
+        pricing = Pricing(con)
+        configuration = pricing.settings()
+        next(m for m in configuration['models'] if m['model']=='test')['usd']['input_per_million'] = 9
+        saved_revision = pricing.save(configuration)['revision']
+        con.close()
         before = (self.codex / 'hooks.json').read_bytes()
         self.install()  # repeat installation does not duplicate hooks or usage
         self.assertEqual((self.codex / 'hooks.json').read_bytes(), before)
@@ -146,6 +154,8 @@ class InstallationTests(unittest.TestCase):
         new = self.variant(NEXT_VERSION)
         self.install(package=new)
         self.assertEqual(self.api('/api/health')['version'], NEXT_VERSION)
+        self.assertEqual(self.api('/api/pricing')['revision'], saved_revision)
+        self.assertGreater(self.api('/api/overview')['summary']['costs']['usd']['total'], 0)
         self.assertEqual((self.codex / 'hooks.json').read_bytes(), before)
         self.assertEqual(self.wait_usage()['summary']['total_tokens'], 120)
         self.assertTrue(list((self.root / 'backups').glob('*/usage.sqlite3')))
