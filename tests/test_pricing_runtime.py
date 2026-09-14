@@ -52,6 +52,8 @@ class PricingRuntimeTests(unittest.TestCase):
             before = request('/api/overview')['summary']
             self.assertAlmostEqual(before['costs']['usd']['total'], .69)
             config = request('/api/pricing')
+            self.assertEqual(config['credit_reference']['credits'],50400)
+            config['credit_reference'] = dict(name='测试套餐', credits=12600)
             astra = next(m for m in config['models'] if m['model']=='gpt-6-astra')
             astra['usd']['input_per_million'] = 20
             astra['credits']['cached_multiplier'] = .2
@@ -72,12 +74,15 @@ class PricingRuntimeTests(unittest.TestCase):
             self.assertEqual(request('/api/pricing')['revision'],saved['revision'])
             server.terminate(); server.wait(timeout=5)
             start()
+            self.assertEqual(request('/api/pricing')['credit_reference'],config['credit_reference'])
+            self.assertEqual(request('/api/overview')['credit_reference'],config['credit_reference'])
             after = request('/api/overview')['summary']
             self.assertEqual(before['total_tokens'],after['total_tokens'])
             self.assertEqual(before['requests'],after['requests'])
             self.assertAlmostEqual(after['costs']['usd']['total'],1.38)
             self.assertAlmostEqual(after['costs']['credits']['total'],19.5)
             for path in ('/api/sessions/s','/api/sessions/s/turns/t'):
+                self.assertEqual(request(path)['credit_reference'],config['credit_reference'])
                 self.assertEqual(request(path)['summary']['costs'],after['costs'])
 
 

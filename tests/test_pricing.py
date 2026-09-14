@@ -130,6 +130,41 @@ class PricingTests(unittest.TestCase):
             with self.assertRaises(ValueError): pricing.save(changed)
         self.assertEqual(pricing.settings()['revision'], original['revision'])
 
+    def test_credit_reference_legacy_upgrade_and_roundtrip(self):
+        from codex_usage.pricing import Pricing, defaults
+        self.fixture()
+        legacy = json.dumps(dict(version=1, models=defaults()))
+        self.con.execute("INSERT INTO settings(key,value) VALUES ('pricing',?)", (legacy,))
+        self.con.commit()
+        before = API(self.con).overview({})['summary']
+        config = Pricing(self.con).settings()
+        self.assertEqual(config['credit_reference'], dict(name='7 天 ×20 套餐等价', credits=50400))
+        self.assertEqual(self.con.execute("SELECT value FROM settings WHERE key='pricing'").fetchone()[0], legacy)
+        config['credit_reference'] = dict(name='自定义套餐', credits=12600.5)
+        saved = Pricing(self.con).save(config)
+        self.con.close(); self.con = connect(self.data)
+        self.assertEqual(Pricing(self.con).settings()['credit_reference'], config['credit_reference'])
+        api = API(self.con)
+        for result in (api.overview({}), api.session('s', {}), api.turn('s', 't1', {}), api.overview({'model':'empty'})):
+            self.assertEqual(result['credit_reference'], config['credit_reference'])
+        self.assertEqual(api.overview({})['summary'], before, 'Reference changes must not reprice usage')
+        saved.pop('credit_reference')  # A pre-upgrade page must preserve a custom reference.
+        self.assertEqual(Pricing(self.con).save(saved)['credit_reference'], config['credit_reference'])
+
+    def test_invalid_credit_reference_does_not_overwrite_settings(self):
+        from codex_usage.pricing import Pricing
+        pricing = Pricing(self.con)
+        original = pricing.settings()
+        for bad in (None, [], {}, dict(name='套餐'), dict(name='', credits=1),
+                    dict(name=' ' , credits=1), dict(name='x'*81, credits=1), dict(name=1, credits=1)):
+            changed = copy.deepcopy(original); changed['credit_reference'] = bad
+            with self.assertRaises(ValueError): pricing.save(changed)
+        for bad in (0, -1, None, True, '50400', float('nan'), float('inf'), 1e12+1):
+            changed = copy.deepcopy(original)
+            changed['credit_reference'] = dict(name='套餐', credits=bad)
+            with self.assertRaises(ValueError): pricing.save(changed)
+        self.assertEqual(pricing.settings()['revision'], original['revision'])
+
 
 if __name__ == '__main__':
     unittest.main()

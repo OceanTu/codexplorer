@@ -4,7 +4,7 @@
 
 ## 安装包与分发
 
-普通使用推荐下载 `dist/token-lens-v0.2.1-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
+普通使用推荐下载 `dist/token-lens-v0.2.2-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。
 
@@ -79,7 +79,7 @@ python3 -B app.py uninstall-hooks
 
 ## 费率与费用估算
 
-Credits 估算统一显示 1 位小数，底层计算、排序和美元精度不变。摘要卡和各层 Credits 明细显示相对于 **50,400 credits** 的占比，基准为用户指定的“7 天 ×20 套餐等价额度”。占比 = 当前筛选下未舍入的 Credits ÷ 50,400，不按筛选天数折算，也不限制在 100%；小于 0.1% 的正值显示 `<0.1%`。未定价记录不算作零占比，混合结果明确标注已知部分。这是等价参考，不是官方套餐剩余额度。
+Credits 估算统一显示 1 位小数，底层计算、排序和美元精度不变。摘要卡和各层 Credits 明细显示相对于**套餐参考额度**的占比。在左侧“费率设置”的“套餐参考额度”中填写套餐名称与 Credits 额度，默认是 **50,400 credits / 7 天 ×20 套餐等价**，可按自己的套餐修改。点击“保存配置”后立即应用，重启或升级保留。占比 = 当前筛选下未舍入的 Credits ÷ 配置额度，不按筛选天数折算，也不限制在 100%；小于 0.1% 的正值显示 `<0.1%`。未定价记录不算作零占比，混合结果明确标注已知部分。这是等价参考，不是官方套餐剩余额度。
 
 左侧进入 **费率设置**。所有倍率相对于普通输入基价；基价留空表示未知，填 0 表示明确免费。保存采用整份配置原子写入，检测其他页面的并发修改；编辑期间不自动刷新覆盖表单。模型 ID 精确匹配，支持手动添加其他模型，不会猜测版本号别名的价格。
 
@@ -102,7 +102,7 @@ Sol 为促销价，官方注明至少持续到 2026-11-21。自动审核 `codex-
 - 配置统一用于全历史，没有历史价格时段；不含工具服务费、税费、订阅费。默认值不会联网自动更新覆盖用户配置。
 - 配置保存在数据目录 SQLite `settings.pricing`，不改 usage 账本，不需要 schema 升级或历史重扫。源码和发行包只包含公共默认值。
 
-接口：`GET /api/pricing` 读取配置、默认值及来源；`POST /api/pricing` 保存 `models` 与原始 `revision`，需要同源 JSON 和 `X-Token-Lens: 1`。各用量接口增加 `costs.credits` / `costs.usd`，含 total、五类 breakdown、priced_requests、unpriced_requests 和 unpriced_tokens。所有记录未定价时 total 为 null；空结果或明确免费时为 0。单请求另含实际用于估算的 effective_rates、mode 和 long_context。
+接口：`GET /api/pricing` 读取配置、默认值及来源；`POST /api/pricing` 保存 `models`、`credit_reference: {name, credits}` 与原始 `revision`（名称 1–80 字符，额度大于 0 且不超过 1e12），需要同源 JSON 和 `X-Token-Lens: 1`。总览、Session、Turn 接口同时返回顶层 `credit_reference`，与本次估算读取同一份配置。旧版本缺少此设置时默认 50,400，旧客户端省略该字段时保留现有配置。各用量接口增加 `costs.credits` / `costs.usd`，含 total、五类 breakdown、priced_requests、unpriced_requests 和 unpriced_tokens。所有记录未定价时 total 为 null；空结果或明确免费时为 0。单请求另含实际用于估算的 effective_rates、mode 和 long_context。
 
 官方来源：[Codex credits](https://learn.chatgpt.com/docs/pricing)、[Fast](https://learn.chatgpt.com/docs/agent-configuration/speed)、[API 缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)。
 

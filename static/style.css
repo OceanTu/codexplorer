@@ -101,3 +101,10 @@ body.sidebar-collapsed{--sidebar-width:68px}
 .sidebar-collapsed nav a{justify-content:center;padding:10px 0}
 .sidebar-collapsed .sidebar-bottom{padding:12px 0 0;text-align:center}.sidebar-collapsed #method-button{font-size:20px}
 @media(max-width:850px){.workspace{margin-left:68px}body:not(.sidebar-collapsed) .sidebar{box-shadow:10px 0 35px #12291c20}.sidebar .brand-text{display:block}.sidebar-collapsed .sidebar .brand-text{display:none}.sidebar .nav-label{display:block}.sidebar-collapsed .sidebar .nav-label{display:none}.sidebar .sidebar-bottom{display:block}.tool-overview>summary span{display:block;margin:4px 0 0 15px}}
+
+.credit-plan{padding:22px;margin-bottom:20px}
+.credit-plan h2{margin:0 0 16px;font-size:17px}
+.credit-plan-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}
+.credit-plan label{display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted)}
+.credit-plan input{width:100%;min-width:0;padding:9px 11px;border:1px solid #d4dfd5;border-radius:5px;background:#fcfdfb;color:var(--ink);font-size:13px}
+.credit-plan p{margin:14px 0 0;font-size:12px;line-height:1.7;color:var(--muted)}

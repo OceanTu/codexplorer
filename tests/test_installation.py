@@ -127,6 +127,7 @@ class InstallationTests(unittest.TestCase):
         con = connect(self.root / 'data')
         pricing = Pricing(con)
         configuration = pricing.settings()
+        configuration['credit_reference'] = dict(name='安装保留测试', credits=12600)
         next(m for m in configuration['models'] if m['model']=='test')['usd']['input_per_million'] = 9
         saved_revision = pricing.save(configuration)['revision']
         con.close()
@@ -155,6 +156,8 @@ class InstallationTests(unittest.TestCase):
         self.install(package=new)
         self.assertEqual(self.api('/api/health')['version'], NEXT_VERSION)
         self.assertEqual(self.api('/api/pricing')['revision'], saved_revision)
+        self.assertEqual(self.api('/api/pricing')['credit_reference'], configuration['credit_reference'])
+        self.assertEqual(self.api('/api/overview')['credit_reference'], configuration['credit_reference'])
         self.assertGreater(self.api('/api/overview')['summary']['costs']['usd']['total'], 0)
         self.assertEqual((self.codex / 'hooks.json').read_bytes(), before)
         self.assertEqual(self.wait_usage()['summary']['total_tokens'], 120)

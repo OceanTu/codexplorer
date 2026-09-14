@@ -7,6 +7,7 @@ import re
 UNITS = ('credits', 'usd')
 PARTS = ('input', 'cached', 'cache_write', 'output', 'reasoning')
 VERIFIED_AT = '2026-09-14'
+DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=50400)
 SOURCES = [
     ('Codex credits', 'https://learn.chatgpt.com/docs/pricing'),
     ('Codex Fast', 'https://learn.chatgpt.com/docs/agent-configuration/speed'),
@@ -73,6 +74,18 @@ def validate(models):
     return result
 
 
+def validate_credit_reference(value):
+    if not isinstance(value, dict) or set(value) != {'name', 'credits'}:
+        raise ValueError('套餐参考配置必须包含名称和 Credits 额度')
+    name, credits = value['name'], value['credits']
+    if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
+        raise ValueError('套餐名称须为 1–80 个字符')
+    if (isinstance(credits, bool) or not isinstance(credits, (int, float))
+            or not math.isfinite(credits) or not 0 < credits <= 1e12):
+        raise ValueError('参考 Credits 额度须为大于 0、不超过 1,000,000,000,000 的有限数字')
+    return dict(name=name.strip(), credits=credits)
+
+
 class Pricing:
     def __init__(self, con):
         self.con = con
@@ -82,13 +95,14 @@ class Pricing:
     def settings(self):
         row = self.con.execute("SELECT value FROM settings WHERE key='pricing'").fetchone()
         raw = row[0] if row else ''
-        saved = json.loads(raw)['models'] if raw else []
+        saved = json.loads(raw) if raw else {}
         models = {m['model']: m for m in defaults()}
-        models.update({m['model']: m for m in saved})
+        models.update({m['model']: m for m in saved.get('models', [])})
         observed = [r[0] for r in self.con.execute('SELECT DISTINCT model FROM usage ORDER BY model')]
         for name in observed:
             models.setdefault(name, blank_model(name))
         return dict(models=list(models.values()), revision=hashlib.sha256(raw.encode()).hexdigest(),
+                    credit_reference=dict(saved.get('credit_reference', DEFAULT_CREDIT_REFERENCE)),
                     verified_at=VERIFIED_AT, sources=[dict(label=k, url=v) for k, v in SOURCES],
                     defaults=defaults(), observed_models=observed)
 
@@ -96,13 +110,17 @@ class Pricing:
         if not isinstance(payload, dict):
             raise ValueError('费率配置必须为 JSON 对象')
         models = validate(payload.get('models'))
-        encoded = json.dumps(dict(version=1, models=models), ensure_ascii=False, allow_nan=False)
         # Check under the same writer lock as the update; concurrent browser tabs
         # must not silently discard each other's manual prices.
         with self.con:
             self.con.execute('BEGIN IMMEDIATE')
-            if payload.get('revision') != self.settings()['revision']:
-                raise ValueError('费率已在其他页面更新，请重新加载费率后再保存')
+            current = self.settings()
+            if payload.get('revision') != current['revision']:
+                raise ValueError('配置已在其他页面更新，请重新加载后再保存')
+            # Older browser clients omit this field; preserve the saved reference.
+            reference = validate_credit_reference(payload.get('credit_reference', current['credit_reference']))
+            encoded = json.dumps(dict(version=2, models=models, credit_reference=reference),
+                                 ensure_ascii=False, allow_nan=False)
             self.con.execute("INSERT INTO settings(key,value) VALUES ('pricing',?) "
                              'ON CONFLICT(key) DO UPDATE SET value=excluded.value', (encoded,))
         self.config = self.settings()

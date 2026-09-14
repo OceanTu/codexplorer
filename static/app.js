@@ -112,7 +112,7 @@ function metric(label, value, note, primary=false, symbol='◌', raw) {
   return `<div class="metric ${primary?'primary':''}"><div class="metric-label">${label}<span class="symbol" aria-hidden="true">${symbol}</span></div><div class="metric-value" title="${esc(raw === undefined ? value : full(raw))}">${esc(pieces[0])}${pieces[1]?`<small>${esc(pieces[1])}</small>`:''}</div><div class="metric-caption">${note}</div></div>`;
 }
 function metrics(s) {
-  const costs=s.costs?['credits','usd'].map(unit=>metric(unit==='credits'?'Credits 估算':'美元估算（API）',amount(s.costs[unit].total,unit),(unit==='credits'?`<span class="credit-reference">占 ${full(CREDIT_REFERENCE)}：${esc(creditsShare(s.costs[unit].total))}</span>`:'')+(s.costs[unit].unpriced_requests?`${full(s.costs[unit].unpriced_requests)} 条未定价 · 已知部分`:'按当前费率 · 非实际账单'),false,unit==='usd'?'$':'≋')).join(''):'';
+  const costs=s.costs?['credits','usd'].map(unit=>metric(unit==='credits'?'Credits 估算':'美元估算（API）',amount(s.costs[unit].total,unit),(unit==='credits'?`<span class="credit-reference">占 ${full(creditReference().credits)}：${esc(creditsShare(s.costs[unit].total))}</span>`:'')+(s.costs[unit].unpriced_requests?`${full(s.costs[unit].unpriced_requests)} 条未定价 · 已知部分`:'按当前费率 · 非实际账单'),false,unit==='usd'?'$':'≋')).join(''):'';
   return unitToolbar()+`<section class="metrics ${s.costs?'has-costs':''}" aria-label="用量摘要">${metric('Token 总量', compact(s.total_tokens), `${full(s.sessions)} 个 session · ${full(s.turns)} 个 turn`,true,'◇',s.total_tokens)}${costs}${metric('未缓存输入', compact(s.uncached_input_tokens), `占输入 ${pct(ratio(s.uncached_input_tokens,s.input_tokens))}` ,false,'↗',s.uncached_input_tokens)}${metric('缓存命中率', pct(s.cache_hit_rate), `${compact(s.cached_input_tokens)} 缓存输入 tokens`,false,'◷')}${metric('输出 Token',compact(s.output_tokens),`含 ${compact(s.reasoning_output_tokens)} 推理 tokens`,false,'↙',s.output_tokens)}</section>`+costSummary(s);
 }
 const legend = '<div class="legend"><span>未缓存输入</span><span class="cached">缓存输入</span><span class="output">输出</span></div>';
@@ -225,11 +225,11 @@ function parseRoute() {
 }
 function render() {
   const d=state.data;if(!d)return;
-  const title=state.kind==='pricing'?'费率与倍率':state.kind==='overview'?'用量与费用':state.kind==='collection'?'采集状态':state.kind==='session'?d.title:'Turn 用量';
+  const title=state.kind==='pricing'?'套餐与费率配置':state.kind==='overview'?'用量与费用':state.kind==='collection'?'采集状态':state.kind==='session'?d.title:'Turn 用量';
   $('#page-title').textContent=title;
   $('#page-title').style.fontSize=state.kind==='session'?'25px':'';
   $('#eyebrow').textContent={overview:'USAGE OVERVIEW',session:'SESSION EXPLORER',turn:'REQUEST EXPLORER',collection:'COLLECTION HEALTH',pricing:'PRICING SETTINGS'}[state.kind];
-  $('#page-subtitle').textContent={overview:'从会话到单次请求，找到消耗发生在哪里。',session:'按主请求归并续跑、子代理与自动审核；点击 turn 可查看每个执行 turn 和逐次消耗。',turn:state.turn,collection:'历史数据回填与后续记录，都在本机完成。',pricing:'按模型配置 Credits 与美元估算，所有设置只保存在本机。'}[state.kind];
+  $('#page-subtitle').textContent={overview:'从会话到单次请求，找到消耗发生在哪里。',session:'按主请求归并续跑、子代理与自动审核；点击 turn 可查看每个执行 turn 和逐次消耗。',turn:state.turn,collection:'历史数据回填与后续记录，都在本机完成。',pricing:'设置套餐参考额度及模型费率，所有设置只保存在本机。'}[state.kind];
   $('#breadcrumb').innerHTML='<a href="#">工作空间</a><span>/</span>'+(state.kind==='pricing'?'费率设置':state.kind==='overview'?'用量总览':state.kind==='collection'?'采集状态':`<a href="#">用量总览</a><span>/</span>${state.kind==='turn'?`<a href="${routeLink(state.session)}">Session</a><span>/</span>Turn`:`<span class="crumb-title">${esc(d.title)}</span>`}`);
   const settingsPage=['collection','pricing'].includes(state.kind);
   $('#filters').hidden=settingsPage;$('.range-tabs').hidden=settingsPage;

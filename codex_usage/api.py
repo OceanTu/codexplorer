@@ -76,6 +76,7 @@ class API:
             sql += ' WHERE ' + ' AND '.join(clauses)
         rows = [dict(r) for r in self.con.execute(sql + ' ORDER BY u.occurred_at,u.id', args)]
         pricing = Pricing(self.con)
+        self.credit_reference = pricing.config['credit_reference']
         for row in rows:
             row['costs'] = pricing.estimate(row)
         return rows
@@ -113,6 +114,7 @@ class API:
         models = [dict(model=name, **aggregate(items)) for name, items in group(rows, lambda r: r['model']).items()]
         models.sort(key=lambda r: r['total_tokens'], reverse=True)
         return dict(summary=aggregate(rows), sessions=sessions, daily=daily, models=models,
+                    credit_reference=self.credit_reference,
                     status=self.status(), generated_at=time.time())
 
     def options(self):
@@ -140,7 +142,8 @@ class API:
         turns.sort(key=lambda r: r['first_at'])
         for turn in turns:
             turn['number'] = ordinals[turn['id']]
-        return dict(id=sid, title=rows[-1]['session_title'] if rows else sid, summary=aggregate(rows), turns=turns)
+        return dict(id=sid, title=rows[-1]['session_title'] if rows else sid, summary=aggregate(rows), turns=turns,
+                    credit_reference=self.credit_reference)
 
     def turn(self, sid, tid, params):
         rows = self.rows(params, session=sid, turn=tid)
@@ -156,4 +159,5 @@ class API:
         for i, row in enumerate(rows):
             row['number'] = i + 1
         return dict(id=tid, session_id=sid, summary=aggregate(rows), requests=rows, executions=executions,
+                    credit_reference=self.credit_reference,
                     tools=combine_tools(r['tools'] for r in rows))
