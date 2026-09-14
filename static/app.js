@@ -302,7 +302,7 @@ document.addEventListener('click',e=>{
   if(el.dataset.action==='reset')reset(true);
 });
 document.addEventListener('input',e=>updatePricingInput(e.target));
-document.addEventListener('change',e=>{if(e.target.dataset.priceMode!==undefined)updatePricingInput(e.target);});
+document.addEventListener('change',e=>{if(e.target.dataset.priceMode!==undefined||e.target.dataset.creditPreset!==undefined)updatePricingInput(e.target);});
 document.addEventListener('submit',e=>{if(e.target.id==='pricing-form'){e.preventDefault();savePricing();}});
 ['model','project','scope'].forEach(id=>$('#'+id).addEventListener('change',()=>{state.page=0;load();}));
 let debounce;$('#search').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{state.page=0;load();},250);});
