@@ -17,6 +17,63 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_messages_api_recovers_after_rewrite_and_keeps_response_contract(self):
+        from test_messages import message, native, call, result
+        from codex_usage.importer import Importer
+        from codex_usage.store import connect
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp) / 'codex'; data = Path(temp) / 'data'
+            (home / 'sessions').mkdir(parents=True)
+            rollout = home / 'sessions/sample.jsonl'
+            records = [event('session_meta', dict(id='s', session_id='s')),
+                       event('turn_context', dict(turn_id='t', model='test')),
+                       message('user', '<environment_context>runtime</environment_context>\nrequest'),
+                       call(), native('r1'), result(text='tool result'),
+                       message('assistant', 'answer'), native('r2', 2)]
+            rollout.write_text(''.join(json.dumps(r) + '\n' for r in records))
+            con = connect(data); Importer(con, home).scan(data); con.close()
+            with socket.socket() as reservation:
+                reservation.bind(('127.0.0.1', 0)); port = reservation.getsockname()[1]
+            server = subprocess.Popen([sys.executable, '-B', str(ROOT/'app.py'),
+                '--codex-home', str(home), '--data-dir', str(data), 'serve',
+                '--port', str(port), '--interval', '60'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            def request(route, method='GET'):
+                req = urllib.request.Request('http://127.0.0.1:%s%s' % (port, route),
+                    method=method, headers={'X-Token-Lens':'1'})
+                with opener.open(req, timeout=3) as response:
+                    return response.status, json.load(response)
+            try:
+                for _ in range(60):
+                    try:
+                        if request('/api/status')[1].get('scan'): break
+                    except OSError: pass
+                    time.sleep(.1)
+                else: self.fail('Initial scan did not complete')
+                # Live file rewrite leaves the stored position invalid until a refresh.
+                rollout.write_text(json.dumps(event('ignored', dict(padding='x'*2000))) + '\n' + rollout.read_text())
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    request('/api/requests/response%3Ar1/messages')
+                self.assertEqual(error.exception.code, 410)
+                _, queued = request('/api/sync', 'POST')
+                for _ in range(60):
+                    if request('/api/status')[1]['scan']['started_at'] >= queued['requested_at']: break
+                    time.sleep(.1)
+                else: self.fail('Refresh did not complete')
+                code, first = request('/api/requests/response%3Ar1/messages')
+                self.assertEqual(code, 200)
+                for key in ('context','input','output','tool_results'):
+                    self.assertIsInstance(first[key], list)
+                self.assertEqual(first['input'][0]['text'], 'request')
+                self.assertEqual(first['output'][0]['name'], 'read_file')
+                self.assertEqual(first['tool_results'][0]['text'], 'tool result')
+                second = request('/api/requests/response%3Ar2/messages')[1]
+                self.assertEqual(second['context'][0]['text'], 'request')
+                self.assertEqual(second['output'][0]['text'], 'answer')
+                self.assertEqual(request('/api/overview')[1]['summary']['total_tokens'], 240)
+            finally:
+                server.terminate(); server.wait(timeout=5)
+
     def test_refresh_survives_disconnected_terminal_and_waits_for_new_scan(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp); home=root/'codex'; data=root/'data'
