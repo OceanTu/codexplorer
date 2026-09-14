@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from codex_usage import lifecycle
+from codex_usage.store import SCHEMA_VERSION
 from codex_usage.installation import backup_database, verify_package
 from scripts.build_release import ROOT, RUNTIME, build
 from test_usage import event, tokens
@@ -104,7 +105,7 @@ class InstallationTests(unittest.TestCase):
             content = path.read_text().replace("    if args.command == 'serve':", """    if args.command == 'serve':
         con = connect(args.data_dir)
         con.execute('DELETE FROM usage')
-        con.execute('PRAGMA user_version=2')
+        con.execute('PRAGMA user_version=99')
         con.commit()
         con.close()
         raise ValueError('Simulated startup failure after database change')""")
@@ -167,7 +168,7 @@ class InstallationTests(unittest.TestCase):
         self.assertEqual(self.wait_usage()['summary']['total_tokens'], 120)
         self.assertEqual((self.codex / 'hooks.json').read_bytes(), before)
         con = sqlite3.connect(self.root / 'data/usage.sqlite3')
-        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], 1)
+        self.assertEqual(con.execute('PRAGMA user_version').fetchone()[0], SCHEMA_VERSION)
         con.close()
 
     def test_migrate_snapshot_removes_only_legacy_hook(self):

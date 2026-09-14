@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -52,5 +52,25 @@ def connect(data_dir):
     con.execute('PRAGMA journal_mode=WAL')
     con.execute('PRAGMA busy_timeout=20000')
     if version < SCHEMA_VERSION:
-        con.executescript('BEGIN IMMEDIATE;\n' + SCHEMA + '\nPRAGMA user_version=1;\nCOMMIT;')
+        # Recheck after taking the writer lock: concurrent API connections must
+        # not invalidate cursors again after another connection has migrated.
+        con.execute('BEGIN IMMEDIATE')
+        try:
+            version = con.execute('PRAGMA user_version').fetchone()[0]
+            if version > SCHEMA_VERSION:
+                raise ValueError('Index was created by a newer Token Lens; upgrade the application')
+            if version < 1:
+                for statement in SCHEMA.split(';'):
+                    if statement.strip():
+                        con.execute(statement)
+            if version < 2:
+                # Usage is accounting history; files is only a rebuildable cursor.
+                # Replay once to repair positions saved by INSERT OR IGNORE.
+                con.execute('DELETE FROM files')
+            con.execute('PRAGMA user_version=%d' % SCHEMA_VERSION)
+            con.commit()
+        except Exception:
+            con.rollback()
+            con.close()
+            raise
     return con

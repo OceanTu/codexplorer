@@ -6,7 +6,8 @@ const path = require('node:path');
 const elements = new Map(), handlers = new Map(), requests = [];
 const element = selector => {
   if (!elements.has(selector)) elements.set(selector, {innerHTML:'', value:'', style:{},
-    classList:{toggle(){}}, addEventListener(){}, setAttribute(){}, removeAttribute(){}});
+    classList:{toggle(){}}, addEventListener:(event,handler)=>handlers.set(selector+':'+event,handler),
+    querySelector:sub=>element(selector+' '+sub), setAttribute(){}, removeAttribute(){}});
   return elements.get(selector);
 };
 const panel = {dataset:{requestId:'response:r1'}, innerHTML:'', contains:()=>false, querySelectorAll:()=>[]};
@@ -35,12 +36,25 @@ assert.doesNotMatch(element('#content').innerHTML, /对话时间线|conversation
 const detail = {context:[],input:[],output:[],tool_results:[],warnings:[],note:'interval'};
 sandbox.fetch = async url => { requests.push(url); return {ok:true,json:async()=>detail}; };
 handlers.get('click')({target:{closest:selector=>selector==='[data-request]'?{dataset:{request:'response:r1'}}:null}});
-setImmediate(()=>{
+setImmediate(async()=>{
   assert.deepEqual(requests, ['/api/requests/response%3Ar1/messages']);
   assert.match(element('#content').innerHTML, /aria-expanded="true"/);
   assert.equal((element('#content').innerHTML.match(/class="request-conversation"/g)||[]).length, 1);
   assert.match(panel.innerHTML, /上行 · 新增输入/);
   assert.match(panel.innerHTML, /下行 · 助手输出/);
   assert.doesNotMatch(element('#content').innerHTML, /对话时间线|conversation-timeline|turn-timeline/);
-  console.log('Turn UI: compact view, single-request click and lazy message fetch passed');
+  // Manual refresh must evict a previously cached 410 and reload only the open row.
+  vm.runInContext("messageCache.set('response:r1', {error:'stale position'});", sandbox);
+  sandbox.location.hash = '#session/s/turn/t';
+  sandbox.fetch = async url => {
+    requests.push(url);
+    const data = url==='/api/sync'?{requested_at:1}:url==='/api/status'?{scan:{started_at:2}}:
+      url==='/api/options'?{models:[],projects:[]}:url.includes('/messages')?detail:sandbox.fixture;
+    return {ok:true,json:async()=>data};
+  };
+  await handlers.get('#refresh:click')();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.filter(url=>url.includes('/messages')).length, 2);
+  assert.doesNotMatch(panel.innerHTML, /stale position/);
+  console.log('Turn UI: compact view, lazy request expansion and refresh recovery passed');
 });

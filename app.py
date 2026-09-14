@@ -212,7 +212,7 @@ def serve(args):
                 except KeyError as e:
                     return self.send(404, {'error': str(e.args[0])})
                 except MessagesUnavailable as e:
-                    return self.send(410, {'error': str(e)})
+                    return self.send(410, {'error': str(e), 'code': e.code})
                 except (ValueError, OverflowError):
                     return self.send(400, {'error': 'Invalid filter'})
                 except Exception:

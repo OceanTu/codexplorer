@@ -1,8 +1,10 @@
 """Regression cases for rewritten rollouts and recoverable conversation ranges."""
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from codex_usage.importer import Importer
 from codex_usage.messages import MessagesUnavailable, RequestMessages
@@ -167,6 +169,23 @@ class RecoveryTests(unittest.TestCase):
             '<environment_context>runtime</environment_context>\nfallback request')), native('r1'))
         self.scan()
         self.assertEqual(self.read()['input'][0]['text'], 'fallback request')
+
+    def test_range_read_stops_if_rewrite_truncates_file(self):
+        class GuardedFile(io.BytesIO):
+            reads = 0
+            def readline(self, size=-1):
+                self.reads += 1
+                if self.reads > 10:
+                    raise AssertionError('Reader loops past EOF after concurrent truncation')
+                return super().readline(size)
+        # Simulate a file becoming shorter after its range end was computed.
+        for content, limit in ((b'', 4), (b'oversized', 100)):
+            with self.subTest(content=content), patch.object(Path, 'open', return_value=GuardedFile(content)), \
+                    patch('codex_usage.messages.MAX_RANGE_BYTES', limit), \
+                    patch('codex_usage.messages.MAX_LINE_BYTES', 2):
+                warnings = set()
+                self.assertEqual(RequestMessages(self.con, self.home).region(self.path, 0, 30, warnings), [])
+                self.assertTrue(warnings)
 
 
 if __name__ == '__main__':

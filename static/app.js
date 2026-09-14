@@ -257,6 +257,7 @@ $('#refresh').addEventListener('click',async()=>{
     if(!r.ok)throw new Error(r.status===403?'刷新请求被拒绝，请从本机地址打开页面':`刷新接口返回 HTTP ${r.status}`);
     const queued=await r.json();
     const scan=await waitForSync(queued.requested_at,refreshController.signal);
+    messageCache.clear();
     await options();await load(true);
     if(scan.errors?.length){$('#error').textContent=`已更新，但有 ${scan.errors.length} 份日志读取失败，详见采集状态。`;$('#error').hidden=false;}
   } catch(e) {

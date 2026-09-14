@@ -4,7 +4,7 @@
 
 ## 安装包与分发
 
-普通使用推荐下载 `dist/token-lens-v0.1.1-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
+普通使用推荐下载 `dist/token-lens-v0.1.2-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。
 
@@ -80,7 +80,11 @@ python3 -B app.py uninstall-hooks
 
 对话关联按同一日志中相邻用量记录划分：上行是该区间新增的可见用户 / 工具消息，不是包含全部缓存历史的 API 报文。工具调用属于助手输出，其执行结果单列并归入下一请求的输入；旧版日志晚记 token 的顺序也单独处理。系统 / 开发者指令、内部推理和媒体二进制不展示；图片、音视频用附件占位说明。若日志丢失或位置变化，显示原因并保留原有 token 统计。单次读取区间超过 32 MB、单行超过 16 MB 或消息数量超过上限会明确提示省略；普通长文本每次加载 12,000 字符。
 
-导入器保存 inode、字节偏移、时间、大小、尾部校验值以及解析状态；追加读取与 SQLite 写入在事务内完成。未结束的 JSONL 行留待下次解析；畸形行计数后跳过。日志截断或替换后重新读取，已索引的消耗仍保留，按唯一 ID 去重。此策略以 Codex 日志通常只追加为前提，不保证发现对大文件中间内容的任意原地篡改。
+导入器保存 inode、字节偏移、时间、大小、已解析前缀的 SHA-256 及解析状态；追加解析与 SQLite 写入在事务内完成。文件增长时先流式校验此前缀，变化则完整重扫，避免只比较尾部而漏掉中段重写。未变化文件直接跳过；增长文件的前缀校验会额外读取历史字节，但不重复解析或计费。未结束的 JSONL 行留待下次解析；畸形行计数后跳过。重扫通过 UPSERT 更新已有请求的位置和关联元数据，保留原 token 计数；继承 ordinal 或同流重复记录只修复已有请求定位，不产生新计费。
+
+v0.1.2 将索引 schema 升到 2，只清空可再生的 `files` 游标，保留用量、会话和 hook 数据，首次启动自动完整重扫。手动刷新完成后会重新读取已展开请求，清除缓存的旧错误。Turn 页面仍按单条请求展开，不加载整轮聚合时间线。原文件尚在但目标 response 已被移除时，无法还原不存在的正文，用量仍保留。
+
+user 正文过滤 Codex 自动注入的环境、插件、浏览器和 AGENTS 指令块；assistant 与 tool 文本保留。相邻 marker 失效时跳过并显示区间扩大的 warning。当前记录无法匹配时，接口区分 `source_unavailable`（文件不存在或不可访问）、`stale_offset`（偏移失效）和 `response_mismatch`（response_id 不匹配），不将 JSON 解析失败描述成文件删除。
 
 ```sh
 # 单次补齐、重建派生索引（不修改 Codex 原始日志）
@@ -92,6 +96,8 @@ python3 -B app.py --codex-home /path/to/.codex --data-dir /path/to/index serve -
 
 # 统计与运行集成测试（集成测试需要允许本机 loopback 监听）
 python3 -B -m unittest discover -s tests -v
+node tests/test_frontend.js
+node --check static/app.js
 ```
 
 源码运行不会注册自启系统服务，下次开机运行 `start.command` 即可。安装包版本提供可选的 macOS 登录自启，可通过 `token-lens autostart on/off` 管理。Codex hook 配置在安装后持续保留，不依赖看板自启。

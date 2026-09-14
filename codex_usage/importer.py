@@ -104,7 +104,23 @@ class Importer:
                   u['cache_write_input_tokens'], u['output_tokens'], u['reasoning_output_tokens'],
                   total, u['total_tokens'], 'exact' if native else p.get('kind', 'legacy_delta'),
                   quality.strip(), cumulative_key, str(path), offset)
-        self.con.execute('INSERT OR IGNORE INTO usage VALUES (' + ','.join('?' for _ in values) + ')', values)
+        # A response ID identifies one charge, even when its transcript moves.
+        # Refresh provenance/labels, preserving the original token counters.
+        self.con.execute('INSERT INTO usage VALUES (' + ','.join('?' for _ in values) + ''')
+            ON CONFLICT(id) DO UPDATE SET
+                path=excluded.path, byte_offset=excluded.byte_offset,
+                session_id=excluded.session_id, thread_id=excluded.thread_id,
+                turn_id=excluded.turn_id, root_turn_id=excluded.root_turn_id,
+                occurred_at=excluded.occurred_at,
+                model=CASE WHEN excluded.model='unknown' THEN usage.model ELSE excluded.model END,
+                effort=CASE WHEN excluded.effort='' THEN usage.effort ELSE excluded.effort END
+            ''', values)
+
+    def relocate(self, response_id, path, offset):
+        """Inherited/duplicate history repairs provenance without creating usage."""
+        if response_id:
+            self.con.execute('UPDATE usage SET path=?,byte_offset=? WHERE id=?',
+                             (str(path), offset, 'response:' + response_id))
 
     def consume(self, d, s, path, offset):
         t, p = d.get('type'), d.get('payload')
@@ -126,6 +142,8 @@ class Importer:
             return
         # Paginated forks can reference, or older rollouts can repeat, base history.
         if d.get('ordinal') is not None and d['ordinal'] < s.get('inherited_before', 0):
+            if t == 'token_usage_record':
+                self.relocate(p.get('response_id'), path, offset)
             return
         if t == 'turn_context':
             s['turn'] = p.get('turn_id') or s.get('turn') or 'unattributed'
@@ -137,6 +155,7 @@ class Importer:
             response_id = p.get('response_id')
             seen = s.setdefault('native_seen', {})
             if response_id and response_id in seen:
+                self.relocate(response_id, path, offset)
                 return
             if response_id:
                 seen[response_id] = True
@@ -212,11 +231,21 @@ class Importer:
             return 0
         state, offset, malformed = {}, 0, 0
         with path.open('rb') as f:
+            fingerprint = hashlib.sha256()
             if old and old['inode'] == st.st_ino and st.st_size > old['size']:
-                f.seek(max(0, old['offset'] - 256))
-                check = hashlib.sha256(f.read(min(256, old['offset']))).hexdigest()
-                if check == old['checkpoint']:
+                # Compare the entire previously parsed prefix. A tail-only hash
+                # misses insertions/reordering in the middle followed by appends.
+                remaining = old['offset']
+                while remaining:
+                    block = f.read(min(1024 * 1024, remaining))
+                    if not block:
+                        break
+                    fingerprint.update(block)
+                    remaining -= len(block)
+                if not remaining and 'sha256:' + fingerprint.hexdigest() == old['checkpoint']:
                     state, offset, malformed = json.loads(old['state']), old['offset'], old['malformed']
+            if not offset:
+                fingerprint = hashlib.sha256()
             f.seek(offset)
             pending = 0
             read_bytes = 0
@@ -230,6 +259,7 @@ class Importer:
                     break  # Writer has not committed the last JSONL line yet.
                 offset = f.tell()
                 read_bytes += len(line)
+                fingerprint.update(line)
                 try:
                     d = json.loads(line)
                     if isinstance(d, dict):
@@ -238,8 +268,7 @@ class Importer:
                         malformed += 1
                 except (ValueError, TypeError, KeyError):
                     malformed += 1
-            f.seek(max(0, offset - 256))
-            checkpoint = hashlib.sha256(f.read(min(256, offset))).hexdigest()
+            checkpoint = 'sha256:' + fingerprint.hexdigest()
         self.con.execute('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?)',
                          (str(path), st.st_ino, st.st_mtime_ns, st.st_size, offset, checkpoint, json.dumps(state), malformed, pending))
         return read_bytes
