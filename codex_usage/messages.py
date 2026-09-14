@@ -14,6 +14,73 @@ MAX_LINE_BYTES = 16 * 1024 * 1024
 MAX_ITEMS = 200
 
 
+def hidden_oversized_record(line):
+    """Classify only confirmed envelope fields from a bounded JSON prefix.
+
+    Never search arbitrary nested text for 'type': tool output can quote any
+    record type. Unknown/incomplete headers keep the visible-content warning.
+    """
+    text = line[:4096].decode('utf-8', errors='replace')
+    decoder = json.JSONDecoder()
+
+    def fields(at, payload=False):
+        values = {}
+        try:
+            while text[at].isspace():
+                at += 1
+            if text[at] != '{':
+                return values, at
+            at += 1
+            while True:
+                while text[at].isspace():
+                    at += 1
+                if text[at] == '}':
+                    return values, at + 1
+                key, at = decoder.raw_decode(text, at)
+                while text[at].isspace():
+                    at += 1
+                if text[at] != ':':
+                    return values, len(text)
+                at += 1
+                while text[at].isspace():
+                    at += 1
+                if key == 'payload' and not payload:
+                    values[key], at = fields(at, payload=True)
+                else:
+                    value, at = decoder.raw_decode(text, at)
+                    if key in ('type', 'role') and isinstance(value, str):
+                        values[key] = value
+                while text[at].isspace():
+                    at += 1
+                if text[at] == '}':
+                    return values, at + 1
+                if text[at] != ',':
+                    break
+                at += 1
+        except (ValueError, IndexError):
+            pass
+        return values, len(text)
+
+    envelope, _ = fields(0)
+    kind = envelope.get('type')
+    if kind is None:
+        return False
+    if kind not in ('response_item', 'event_msg'):
+        # Includes compacted snapshots, metadata and world state. These are not
+        # displayed as message bodies, regardless of their serialized size.
+        return True
+    payload = envelope.get('payload', {})
+    subtype = payload.get('type')
+    if subtype is None:
+        return False
+    if kind == 'event_msg':
+        return subtype not in ('user_message', 'agent_message')
+    if subtype == 'message':
+        role = payload.get('role')
+        return role is not None and role not in ('user', 'assistant', 'tool')
+    return subtype not in ('function_call', 'custom_tool_call', 'function_call_output', 'custom_tool_call_output')
+
+
 class MessagesUnavailable(Exception):
     def __init__(self, message, code='source_unavailable'):
         super().__init__(message)
@@ -147,7 +214,8 @@ class RequestMessages:
                 offset = f.tell()
                 line = f.readline(min(MAX_LINE_BYTES+1, end-offset))
                 if len(line) > MAX_LINE_BYTES:
-                    warnings.add('有单条记录超过 16 MB，已省略；可在原始日志中查看。')
+                    if not hidden_oversized_record(line):
+                        warnings.add('一条对话来源的原始 JSON 超过 16 MB（可能含内嵌图片），已省略该条；其余消息继续展示。')
                     while line and not line.endswith(b'\n') and f.tell() < end:
                         line = f.readline(min(65536, end-f.tell()))
                     continue

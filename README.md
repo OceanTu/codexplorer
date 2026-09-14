@@ -4,7 +4,7 @@
 
 ## 安装包与分发
 
-普通使用推荐下载 `dist/token-lens-v0.1.3-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
+普通使用推荐下载 `dist/token-lens-v0.1.4-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。
 
@@ -89,6 +89,8 @@ v0.1.2 将索引 schema 升到 2，只清空可再生的 `files` 游标，保留
 user 正文过滤 Codex 自动注入的环境、插件、浏览器和 AGENTS 指令块；assistant 与 tool 文本保留。相邻 marker 失效时跳过并显示区间扩大的 warning。当前记录无法匹配时，接口区分 `source_unavailable`（文件不存在或不可访问）、`stale_offset`（偏移失效）和 `response_mismatch`（response_id 不匹配），不将 JSON 解析失败描述成文件删除。
 
 v0.1.3 将 schema 升到 3，为树导航建立工具元数据索引：只保存工具名、调用 ID、事件位置、可见返回文本的字符和字节数，不保存工具参数与完整正文。升级后自动重扫，日志改写时重建该文件的工具索引。调用按相邻有效用量 marker 归属请求，结果按同文件 call_id 关联；复制历史仍按 response_id 汇总。没有用量 marker 的调用暂时无法归属某次请求，未落盘的结果在后续采集时补齐。字符数按文本视图计算，媒体使用占位符，不代表原始媒体大小或精确 token 数。
+
+v0.1.4 在超大记录触发大小提示前，使用最多 4 KB 的 JSON 前缀确认外层记录类型。压缩快照、运行时元数据和内部记录本来就不作为正文展示，因此不再重复提示“对话已省略”。可见消息、工具调用及返回结果仍受原有 16 MB 单条读取上限保护；不能确认类型时继续告知内容可能缺失。分类只读取外层 type、payload.type 与 role，不会把工具正文引用的同名字段当成记录类型。
 
 ```sh
 # 单次补齐、重建派生索引（不修改 Codex 原始日志）
