@@ -65,6 +65,23 @@ class Importer:
         self.con.execute('INSERT OR IGNORE INTO threads(id,session_id) VALUES (?,?)',
                          (thread, session or thread))
 
+    def agent_metadata(self, p):
+        source = p.get('source', {})
+        if isinstance(source, str):
+            try:
+                source = json.loads(source)
+            except ValueError:
+                source = {}
+        sub = source.get('subagent', {}) if isinstance(source, dict) else {}
+        spawn = sub.get('thread_spawn', {}) if isinstance(sub, dict) else {}
+        spawn = spawn if isinstance(spawn, dict) else {}
+        for field, key in [('agent_name', 'name'), ('agent_path', 'agent_path'),
+                           ('agent_nickname', 'agent_nickname'), ('agent_role', 'agent_role')]:
+            value = p.get(key) or spawn.get(key)
+            if isinstance(value, str) and value.strip():
+                value = re.sub(r'\s+', ' ', value).strip()[:240]
+                self.con.execute('UPDATE threads SET ' + field + '=? WHERE id=?', (value, p.get('id')))
+
     def ensure_turn(self, state, turn=None, thread=None, session=None, root=None, ts=0):
         thread = thread or state['thread']
         turn = turn or state.get('turn') or 'unattributed'
@@ -141,6 +158,7 @@ class Importer:
             self.ensure_thread(thread, s['session'])
             self.con.execute('UPDATE threads SET session_id=?,parent_id=?,cwd=?,source=?,created_at=? WHERE id=?',
                              (s['session'], s['parent'], p.get('cwd', ''), source, stamp(p.get('timestamp')), thread))
+            self.agent_metadata(p)
             return
         if 'thread' not in s:
             return
@@ -280,6 +298,19 @@ class Importer:
         return read_bytes
 
     def metadata(self):
+        if not self.con.execute("SELECT 1 FROM settings WHERE key='agent_metadata_v1'").fetchone():
+            complete = True
+            for row in self.con.execute('SELECT path FROM files').fetchall():
+                try:
+                    with Path(row[0]).open('rb') as handle:
+                        line = handle.readline(256 * 1024)
+                    d = json.loads(line)
+                    if isinstance(d, dict) and d.get('type') == 'session_meta' and isinstance(d.get('payload'), dict):
+                        self.agent_metadata(d['payload'])
+                except (OSError, ValueError):
+                    complete = False
+            if complete:
+                self.con.execute("INSERT OR REPLACE INTO settings VALUES ('agent_metadata_v1','done')")
         index = self.home / 'session_index.jsonl'
         if index.exists():
             for line in index.open():
@@ -296,8 +327,12 @@ class Importer:
                 try:
                     columns = {r[1] for r in other.execute('PRAGMA table_info(threads)')}
                     label = "COALESCE(NULLIF(name,''),title)" if 'name' in columns else 'title'
-                    for row in other.execute('SELECT id,' + label + ',archived FROM threads'):
-                        self.con.execute('UPDATE threads SET title=?,archived=? WHERE id=?', (preview(row[1]) or row[1][:240], row[2], row[0]))
+                    optional = [k for k in ('name', 'agent_nickname', 'agent_role', 'agent_path', 'source') if k in columns]
+                    extra = ',' + ','.join(optional) if optional else ''
+                    for row in other.execute('SELECT id,' + label + ',archived' + extra + ' FROM threads'):
+                        title = row[1] if isinstance(row[1], str) else ''
+                        self.con.execute('UPDATE threads SET title=?,archived=? WHERE id=?', (preview(title) or title[:240], row[2], row[0]))
+                        self.agent_metadata(dict(id=row[0], **dict(zip(optional, row[3:]))))
                 finally:
                     other.close()
             except sqlite3.Error:

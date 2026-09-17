@@ -89,6 +89,13 @@ vm.runInContext("state.data={...fixture,requests:fixture.requests.filter(r=>r.is
 assert.equal(series(element('#content').innerHTML).length,2);
 vm.runInContext("state.data={...fixture,requests:fixture.requests.map(r=>({...r,occurred_at:1,input_tokens:0}))}; render();",sandbox);
 assert.doesNotMatch(element('#content').innerHTML, /NaN|Infinity/,'Handle identical times and zero inputs');
+// Readable names from indexed metadata appear consistently across all Agent surfaces.
+vm.runInContext("state.contextAgent=''; state.data={...fixture,requests:fixture.requests.map(r=>({...r,agent_label:r.thread_id==='agent-a'?'feature_tracker · Leibniz':r.thread_id==='agent-b'?'检查 <渲染> · Turing':'主 Agent'})),executions:[{...fixture.requests[0],agent_label:'feature_tracker · Leibniz'}]}; render();",sandbox);
+assert.match(element('#content').innerHTML,/feature_tracker · Leibniz/);
+assert.match(element('#content').innerHTML,/检查 &lt;渲染&gt; · Turing/);
+assert.match(element('#turn-navigation').innerHTML,/feature_tracker · Leibniz/);
+assert.match(element('#content').innerHTML,/<span class="tag agent"[^>]*>feature_tracker · Leibniz<\/span>/);
+assert.match(element('#content').innerHTML,/<button[^>]*data-context-agent="agent-a"[^>]*>.*?feature_tracker · Leibniz/);
 // Paging and tree navigation use filtered indices while preserving original request numbers.
 vm.runInContext("state.data={...fixture,requests:Array.from({length:120},(_,i)=>({...fixture.requests[i%2],id:'r'+(i+1),number:i+1,thread_id:i%2?'agent-a':'main'}))}; render();",sandbox);
 handlers.get('change')({target:{id:'context-agent',value:'agent-a'}});

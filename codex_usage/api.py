@@ -33,6 +33,37 @@ def ranked_models(rows):
     return sorted(groups, key=lambda name: sum(r['total_tokens'] for r in groups[name]), reverse=True)
 
 
+def agent_labels(con):
+    threads = [dict(r) for r in con.execute('SELECT * FROM threads ORDER BY created_at,id')]
+    by_id = {r['id']: r for r in threads}
+    labels, counters = {}, {}
+    for r in threads:
+        is_agent = r['id'] != r['session_id'] or r['source'] in ('subagent', 'guardian_review')
+        if not is_agent:
+            labels[r['id']] = '主 Agent'
+            continue
+        task = r['agent_name'] or r['agent_path'].rstrip('/').split('/')[-1]
+        parts = list(dict.fromkeys(v for v in (task, r['agent_nickname'], r['agent_role']) if v))
+        if not parts and r['source'] != 'guardian_review':
+            inherited = {by_id.get(parent, {}).get('title', '') for parent in (r['parent_id'], r['session_id'])}
+            if r['title'] and r['title'] not in inherited:
+                parts = [r['title'][:60]]
+        if parts:
+            labels[r['id']] = ' · '.join(parts)
+        else:
+            role = '自动审核' if r['source'] == 'guardian_review' else '子 Agent'
+            key = (r['session_id'], role)
+            counters[key] = counters.get(key, 0) + 1
+            labels[r['id']] = role + ' ' + str(counters[key])
+    # Preserve unique choices when logs reuse a nickname or task name.
+    duplicates = group(threads, lambda r: (r['session_id'], labels[r['id']]))
+    for items in duplicates.values():
+        if len(items) > 1:
+            for i, r in enumerate(items, 1):
+                labels[r['id']] += ' · ' + str(i)
+    return labels
+
+
 class API:
     def __init__(self, con):
         self.con = con
@@ -66,6 +97,8 @@ class API:
         sql = """SELECT u.*, COALESCE(t.cwd,'') AS project,
           COALESCE(NULLIF(s.title,''),NULLIF(t.title,''),u.session_id) AS session_title,
           COALESCE(NULLIF(t.title,''),t.source,u.thread_id) AS thread_title,
+          COALESCE(t.agent_path,'') AS agent_path, COALESCE(t.agent_nickname,'') AS agent_nickname,
+          COALESCE(t.agent_role,'') AS agent_role,
           COALESCE(t.source,'unknown') AS source, COALESCE(s.archived,0) AS archived,
           COALESCE(tr.preview,'') AS preview, COALESCE(tr.status,'observed') AS status,
           tr.started_at, tr.ended_at, """ + is_agent + """ AS is_agent
@@ -77,7 +110,9 @@ class API:
         rows = [dict(r) for r in self.con.execute(sql + ' ORDER BY u.occurred_at,u.id', args)]
         pricing = Pricing(self.con)
         self.credit_reference = pricing.config['credit_reference']
+        names = agent_labels(self.con)
         for row in rows:
+            row['agent_label'] = names.get(row['thread_id'], '子 Agent' if row['is_agent'] else '主 Agent')
             row['costs'] = pricing.estimate(row)
         return rows
 
@@ -150,7 +185,7 @@ class API:
         executions = []
         for (thread, turn), items in group(rows, lambda r: (r['thread_id'], r['turn_id'])).items():
             executions.append(dict(id=turn, thread_id=thread, is_agent=items[0]['is_agent'],
-                                   source=items[0]['source'], first_at=items[0]['occurred_at'],
+                                   source=items[0]['source'], agent_label=items[0]['agent_label'], first_at=items[0]['occurred_at'],
                                    **aggregate(items)))
         executions.sort(key=lambda r: r['first_at'])
         if params.get('execution'):
