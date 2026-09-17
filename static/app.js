@@ -42,11 +42,15 @@ function toolOverview(s) {
   if(!s)return '';
   return `<details class="tool-overview"><summary>工具 <b>${full(s.calls)} 次</b><span>返回文本 ${toolOutput(s)}${s.unavailable_requests?' · '+full(s.unavailable_requests)+' 条定位不可用':''}</span></summary><div class="tool-chips">${s.tools.map(t=>`<span title="${full(t.output_bytes)} B；${full(t.missing_results)} 次调用没有返回记录"><b>${esc(t.name)}</b> ${full(t.calls)} 次 · ${toolOutput(t)}</span>`).join('')||'<span>没有可关联的工具调用</span>'}</div><p>按可见返回文本统计字符和 UTF-8 字节，不含媒体原始数据。工具返回不等于模型输出 token；摘要按日志区间关联。</p></details>`;
 }
+function visibleTurnRequests() {
+  const rows=state.data?.requests||[];
+  return state.contextAgent?rows.filter(r=>r.thread_id===state.contextAgent):rows;
+}
 function renderTurnNavigation() {
   const nav=$('#turn-navigation');
   nav.hidden=state.kind!=='turn';
   if(nav.hidden){nav.innerHTML='';return;}
-  const rows=sliced(state.data.requests), groups=new Map(),scroll=nav.scrollTop;
+  const requests=visibleTurnRequests(), rows=sliced(requests), groups=new Map(),scroll=nav.scrollTop;
   for(const row of rows){const key=row.thread_id+'/'+row.turn_id;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
   const open=(key,defaultValue=false)=>(treeDisclosure.has(key)?treeDisclosure.get(key):defaultValue)?'open':'';
   const jump=(r,label,extra='')=>`<button data-jump-request="${esc(r.id)}" ${extra} title="定位请求 #${r.number} · 模型输出 ${full(r.output_tokens)} tokens">${label}</button>`;
@@ -57,14 +61,14 @@ function renderTurnNavigation() {
     if(!tools.length)return `<li class="tree-request${active}">${jump(r,label)}</li>`;
     return `<li class="tree-request${active}"><details data-tree-key="${esc(key)}" ${open(key)}><summary><span>${label}</span>${jump(r,'↗','class="tree-locate" aria-label="定位请求 #'+r.number+'"')}</summary><ul>${tools.map(t=>`<li>${jump(r,`<span class="tree-tool-name">${esc(t.name)}</span><small>${toolOutput(t)}</small>`,'class="tree-tool"')}</li>`).join('')}</ul></details></li>`;
   };
-  nav.innerHTML=`<div class="tree-heading"><span>本轮导航</span><small>${full(state.data.requests.length)} 条请求</small></div><nav aria-label="本轮请求导航">${[...groups].map(([key,items])=>`<details class="tree-execution" data-tree-key="${esc(key)}" ${open(key,true)}><summary>${items[0].is_agent?(items[0].source==='guardian_review'?'自动审核':'子代理'):'主代理'} <small>· ${esc(items[0].turn_id.slice(-6))}</small><span>${items.length}</span></summary><ul>${items.map(node).join('')}</ul></details>`).join('')||'<p class="tree-empty">当前筛选无请求</p>'}</nav><div class="tree-pager"><button data-page="prev" ${state.page===0?'disabled':''} aria-label="导航上一页">‹</button><span>${state.page+1} / ${Math.max(1,Math.ceil(state.data.requests.length/50))}</span><button data-page="next" ${(state.page+1)*50>=state.data.requests.length?'disabled':''} aria-label="导航下一页">›</button></div><p class="tree-note">展开查看工具，↗ 打开单条对话</p>`;
+  nav.innerHTML=`<div class="tree-heading"><span>本轮导航</span><small>${full(requests.length)} 条请求</small></div><nav aria-label="本轮请求导航">${[...groups].map(([key,items])=>`<details class="tree-execution" data-tree-key="${esc(key)}" ${open(key,true)}><summary>${items[0].is_agent?(items[0].source==='guardian_review'?'自动审核':'子代理'):'主代理'} <small>· ${esc(items[0].turn_id.slice(-6))}</small><span>${items.length}</span></summary><ul>${items.map(node).join('')}</ul></details>`).join('')||'<p class="tree-empty">当前筛选无请求</p>'}</nav><div class="tree-pager"><button data-page="prev" ${state.page===0?'disabled':''} aria-label="导航上一页">‹</button><span>${state.page+1} / ${Math.max(1,Math.ceil(requests.length/50))}</span><button data-page="next" ${(state.page+1)*50>=requests.length?'disabled':''} aria-label="导航下一页">›</button></div><p class="tree-note">展开查看工具，↗ 打开单条对话</p>`;
   nav.scrollTop=scroll;
 }
 function jumpRequest(id) {
-  const index=state.data?.requests?.findIndex(r=>r.id===id)??-1;
+  const requests=visibleTurnRequests(), index=requests.findIndex(r=>r.id===id);
   if(index<0)return;
   state.page=Math.floor(index/50);state.open.clear();state.open.add(id);render();
-  document.getElementById('messages-'+state.data.requests[index].number)?.scrollIntoView({block:'start'});
+  document.getElementById('messages-'+requests[index].number)?.scrollIntoView({block:'start'});
 }
 document.addEventListener('toggle',e=>{if(e.target.id==='metric-details')state.metricsExpanded=e.target.open;if(e.target.dataset?.treeKey)treeDisclosure.set(e.target.dataset.treeKey,e.target.open);},true);
 
@@ -193,13 +197,13 @@ function requestChart(rows) {
     const color=contextColor(a.id), points=a.items.map(r=>`${x(r)},${y(r)}`).join(' ');
     return `<polyline data-context-series="${esc(a.id)}" points="${points}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(label(a))}</title></polyline>${a.items.length===1?`<circle cx="${x(a.items[0])}" cy="${y(a.items[0])}" r="4" fill="${color}"/>`:''}`;
   }).join('');
-  return `<section class="panel section-gap"><div class="panel-heading context-heading"><div><h2>Agent 输入上下文走势</h2><small>峰值 ${compact(peak)} tokens · 每次请求的输入量（含缓存）</small></div><div class="context-agent-picker"><label for="context-agent">Agent</label><select id="context-agent" aria-label="选择上下文 Agent" title="${esc(selected?.id||'显示全部 Agent')}"><option value="" ${!selected?'selected':''}>全部 Agent · ${agents.length} 个</option>${agents.map(a=>`<option value="${esc(a.id)}" ${a.id===state.contextAgent?'selected':''}>${esc(label(a))} · ${a.items.length} 条</option>`).join('')}</select></div></div><div class="request-chart"><div class="context-legend" aria-label="Agent 图例">${agents.map(a=>`<button type="button" data-context-agent="${esc(a.id)}" aria-pressed="${!selected||a.id===selected.id}" title="${esc(label(a))} · ${a.items.length} 条请求；点击单独查看，再次点击恢复全部"><i style="background:${contextColor(a.id)}" aria-hidden="true"></i>${esc(shortLabel(a))}<small>${a.items.length} 条</small></button>`).join('')}</div><div class="context-plot"><div class="context-axis" aria-hidden="true"><span>${compact(ceiling)}</span><span>${compact(ceiling/2)}</span><span>0</span></div><svg viewBox="0 0 1000 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(peak)}，显示 ${visible.length} 个 Agent，共用时间与输入 token 坐标"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/>${lines}</svg></div><div class="chart-captions"><span>${date(start,true)}</span><span>${items.length} 条记录 · ${visible.length} 个 Agent</span><span>${date(end,true)}</span></div><p class="context-chart-note">横轴为请求时间，纵轴为输入 tokens。点击图例单独查看，再次点击恢复全部；总消耗与请求明细不变。</p></div></section>`;
+  return `<section class="panel section-gap"><div class="panel-heading context-heading"><div><h2>Agent 输入上下文走势</h2><small>峰值 ${compact(peak)} tokens · 每次请求的输入量（含缓存）</small></div><div class="context-agent-picker"><label for="context-agent">Agent</label><select id="context-agent" aria-label="选择上下文 Agent" title="${esc(selected?.id||'显示全部 Agent')}"><option value="" ${!selected?'selected':''}>全部 Agent · ${agents.length} 个</option>${agents.map(a=>`<option value="${esc(a.id)}" ${a.id===state.contextAgent?'selected':''}>${esc(label(a))} · ${a.items.length} 条</option>`).join('')}</select></div></div><div class="request-chart"><div class="context-legend" aria-label="Agent 图例">${agents.map(a=>`<button type="button" data-context-agent="${esc(a.id)}" aria-pressed="${!selected||a.id===selected.id}" title="${esc(label(a))} · ${a.items.length} 条请求；点击单独查看，再次点击恢复全部"><i style="background:${contextColor(a.id)}" aria-hidden="true"></i>${esc(shortLabel(a))}<small>${a.items.length} 条</small></button>`).join('')}</div><div class="context-plot"><div class="context-axis" aria-hidden="true"><span>${compact(ceiling)}</span><span>${compact(ceiling/2)}</span><span>0</span></div><svg viewBox="0 0 1000 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(peak)}，显示 ${visible.length} 个 Agent，共用时间与输入 token 坐标"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/>${lines}</svg></div><div class="chart-captions"><span>${date(start,true)}</span><span>${items.length} 条记录 · ${visible.length} 个 Agent</span><span>${date(end,true)}</span></div><p class="context-chart-note">横轴为请求时间，纵轴为输入 tokens。点击图例单独查看，再次点击恢复全部；请求明细与左侧导航同步筛选，顶部消耗仍为当前 Turn 汇总。</p></div></section>`;
 }
 function selectContextAgent(id, legend=false) {
   if(state.kind!=='turn')return;
   state.contextAgent=legend&&state.contextAgent===id?'':id;
-  // Leave the request table and any expanded conversation DOM untouched.
-  $('#context-chart').innerHTML=requestChart(state.data.requests);
+  state.page=0;
+  render();
   if(legend)[...document.querySelectorAll('[data-context-agent]')].find(b=>b.dataset.contextAgent===id)?.focus({preventScroll:true});
   else $('#context-agent')?.focus({preventScroll:true});
 }
@@ -251,9 +255,14 @@ function requestDetailsRow(r) {
 }
 
 function turnView(d) {
-  const rows=sliced(d.requests).map(requestDetailsRow);
+  const previousAgent=state.contextAgent, chart=requestChart(d.requests);
+  if(previousAgent!==state.contextAgent)state.page=0;
+  const requests=visibleTurnRequests(), visibleIds=new Set(requests.map(r=>r.id));
+  for(const id of state.open)if(!visibleIds.has(id))state.open.delete(id);
+  state.page=Math.max(0,Math.min(state.page,Math.ceil(requests.length/50)-1));
+  const rows=sliced(requests).map(requestDetailsRow);
   const executionPicker = `<div class="execution-picker"><label for="execution">执行 Turn</label><select id="execution" aria-label="筛选执行 Turn"><option value="">全部 ${d.executions.length} 个（含续跑 / 子代理）</option>${d.executions.map((r,i)=>`<option value="${esc(r.id)}" ${state.execution===r.id?'selected':''}>${i+1}. ${r.is_agent?(r.source==='guardian_review'?'自动审核':'子代理'):'主代理'} · ${r.id.slice(-8)} · ${compact(r.total_tokens)} tokens</option>`).join('')}</select><span>可单独查看每个执行 turn 的消耗</span></div>`;
-  return executionPicker+toolOverview(d.tools)+metrics(d.summary)+`<div id="context-chart">${requestChart(d.requests)}</div>`+(rows.length?tablePanel('请求明细',d.requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','Credits 估算','工具 / 返回文本','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
+  return executionPicker+toolOverview(d.tools)+metrics(d.summary)+`<div id="context-chart">${chart}</div>`+(rows.length?tablePanel('请求明细',requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','Credits 估算','工具 / 返回文本','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
 }
 function collectionView(d) {
   const scan=d.scan||{}, hook=d.latest_hook, files=d.files||{};

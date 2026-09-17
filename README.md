@@ -4,7 +4,7 @@
 
 ## 安装包与分发
 
-普通使用推荐下载 `dist/token-lens-v0.2.8-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
+普通使用推荐下载 `dist/token-lens-v0.2.9-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。
 
@@ -170,3 +170,7 @@ Turn 的输入上下文图可选择主 Agent、子 Agent 或自动审核线程�
 ## v0.2.8 多 Agent 同图对比
 
 默认在一张上下文图中显示所有 Agent，不同颜色对应不同线程，共用请求时间轴和输入 Token 刻度。点击图例或下拉选项可单独查看 Agent，再次点击该图例或选择“全部 Agent”恢复所有曲线；切换时坐标刻度和线程颜色保持一致。仅更新图表，总消耗与已展开的对话保持不变。
+
+## v0.2.9 Agent 筛选联动明细
+
+默认显示全部 Agent；图例和下拉选择同步筛选上下文曲线、请求明细与左侧导航，保留原请求编号。切换回到第一页，分页与跳转按筛选后的列表计算。当前 Agent 的对话展开状态保留，其他 Agent 的展开收起；原始用量及顶部 Turn 汇总保持不变。
