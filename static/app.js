@@ -163,27 +163,45 @@ function contextAgents(rows) {
   return [...groups].map(([id,items])=>({id,items:[...items].sort((a,b)=>a.occurred_at-b.occurred_at||a.id.localeCompare(b.id))}))
     .sort((a,b)=>Number(Boolean(a.items[0].is_agent))-Number(Boolean(b.items[0].is_agent))||a.items[0].occurred_at-b.items[0].occurred_at||a.id.localeCompare(b.id));
 }
+const contextColors=new Map();
+function contextColor(id) {
+  const palette=['#207c57','#547aca','#b56827','#9564b5','#13818d','#c15f83','#737521','#835b48'];
+  if(!contextColors.has(id)) {
+    const n=contextColors.size;
+    contextColors.set(id,palette[n]||`hsl(${Math.round(n*137.508)%360} 55% 40%)`);
+  }
+  return contextColors.get(id);
+}
 function requestChart(rows) {
   const agents=contextAgents(rows);
   if(!agents.length){state.contextAgent='';return '';}
-  const selected=agents.find(a=>a.id===state.contextAgent)||agents[0];
-  state.contextAgent=selected.id;
-  const items=selected.items, first=items[0];
+  const selected=agents.find(a=>a.id===state.contextAgent);
+  if(!selected)state.contextAgent='';
+  const visible=selected?[selected]:agents, items=visible.flatMap(a=>a.items);
   const role=r=>r.is_agent?(r.source==='guardian_review'?'自动审核':'子 Agent'):'主 Agent';
+  const shortLabel=a=>role(a.items[0])+' · '+a.id.slice(-8);
   const label=a=>{
     const r=a.items[0], title=r.thread_title;
-    return role(r)+' · '+a.id.slice(-8)+(title&&title!==a.id&&title!==r.source?' · '+title.slice(0,48):'');
+    return shortLabel(a)+(title&&title!==a.id&&title!==r.source?' · '+title.slice(0,48):'');
   };
-  const peak=Math.max(...items.map(x=>x.input_tokens)), scale=Math.max(1,peak), width=1000, height=130;
-  const points=items.map((r,i)=>`${20+(items.length>1?i/(items.length-1):.5)*960},${140-r.input_tokens/scale*height}`).join(' ');
-  return `<section class="panel section-gap"><div class="panel-heading context-heading"><div><h2>${role(first)}输入上下文走势</h2><small>峰值 ${compact(peak)} tokens · 每次请求的输入量（含缓存）</small></div><div class="context-agent-picker"><label for="context-agent">Agent</label><select id="context-agent" aria-label="选择上下文 Agent" title="${esc(selected.id)}">${agents.map(a=>`<option value="${esc(a.id)}" ${a.id===selected.id?'selected':''}>${esc(label(a))} · ${a.items.length} 条</option>`).join('')}</select></div></div><div class="request-chart"><svg viewBox="0 0 ${width} 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(peak)}"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/><polyline points="${points}" fill="none" stroke="#569174" stroke-width="2" vector-effect="non-scaling-stroke"/>${items.length===1?`<circle cx="500" cy="${140-items[0].input_tokens/scale*height}" r="4" fill="#569174"/>`:''}</svg><div class="chart-captions"><span>开始 · ${compact(items[0].input_tokens)}</span><span>${items.length} 条记录 · 按请求顺序</span><span>最后 · ${compact(items.at(-1).input_tokens)}</span></div><p class="context-chart-note">仅切换此图；总消耗与请求明细不变。展示当前筛选范围内该 Agent 的记录。</p></div></section>`;
+  agents.forEach(a=>contextColor(a.id));
+  // Keep both axes fixed when selecting a series so comparisons remain meaningful.
+  const peak=Math.max(...items.map(x=>x.input_tokens)), ceiling=Math.max(...rows.map(x=>x.input_tokens)), scale=Math.max(1,ceiling);
+  const start=Math.min(...rows.map(r=>r.occurred_at)), end=Math.max(...rows.map(r=>r.occurred_at));
+  const x=r=>20+(end>start?(r.occurred_at-start)/(end-start):.5)*960, y=r=>140-r.input_tokens/scale*130;
+  const lines=visible.map(a=>{
+    const color=contextColor(a.id), points=a.items.map(r=>`${x(r)},${y(r)}`).join(' ');
+    return `<polyline data-context-series="${esc(a.id)}" points="${points}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"><title>${esc(label(a))}</title></polyline>${a.items.length===1?`<circle cx="${x(a.items[0])}" cy="${y(a.items[0])}" r="4" fill="${color}"/>`:''}`;
+  }).join('');
+  return `<section class="panel section-gap"><div class="panel-heading context-heading"><div><h2>Agent 输入上下文走势</h2><small>峰值 ${compact(peak)} tokens · 每次请求的输入量（含缓存）</small></div><div class="context-agent-picker"><label for="context-agent">Agent</label><select id="context-agent" aria-label="选择上下文 Agent" title="${esc(selected?.id||'显示全部 Agent')}"><option value="" ${!selected?'selected':''}>全部 Agent · ${agents.length} 个</option>${agents.map(a=>`<option value="${esc(a.id)}" ${a.id===state.contextAgent?'selected':''}>${esc(label(a))} · ${a.items.length} 条</option>`).join('')}</select></div></div><div class="request-chart"><div class="context-legend" aria-label="Agent 图例">${agents.map(a=>`<button type="button" data-context-agent="${esc(a.id)}" aria-pressed="${!selected||a.id===selected.id}" title="${esc(label(a))} · ${a.items.length} 条请求；点击单独查看，再次点击恢复全部"><i style="background:${contextColor(a.id)}" aria-hidden="true"></i>${esc(shortLabel(a))}<small>${a.items.length} 条</small></button>`).join('')}</div><div class="context-plot"><div class="context-axis" aria-hidden="true"><span>${compact(ceiling)}</span><span>${compact(ceiling/2)}</span><span>0</span></div><svg viewBox="0 0 1000 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(peak)}，显示 ${visible.length} 个 Agent，共用时间与输入 token 坐标"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/>${lines}</svg></div><div class="chart-captions"><span>${date(start,true)}</span><span>${items.length} 条记录 · ${visible.length} 个 Agent</span><span>${date(end,true)}</span></div><p class="context-chart-note">横轴为请求时间，纵轴为输入 tokens。点击图例单独查看，再次点击恢复全部；总消耗与请求明细不变。</p></div></section>`;
 }
-function selectContextAgent(id) {
+function selectContextAgent(id, legend=false) {
   if(state.kind!=='turn')return;
-  state.contextAgent=id;
+  state.contextAgent=legend&&state.contextAgent===id?'':id;
   // Leave the request table and any expanded conversation DOM untouched.
   $('#context-chart').innerHTML=requestChart(state.data.requests);
-  $('#context-agent')?.focus();
+  if(legend)[...document.querySelectorAll('[data-context-agent]')].find(b=>b.dataset.contextAgent===id)?.focus({preventScroll:true});
+  else $('#context-agent')?.focus({preventScroll:true});
 }
 function messageCard(m, requestId) {
   const isCall=['function_call','custom_tool_call'].includes(m.kind);
@@ -310,6 +328,7 @@ function reset(all=false) {
   state.from=null;state.to=null;state.execution='';chooseRange(all?'all':'7');
 }
 document.addEventListener('click',e=>{
+  const agent=e.target.closest('[data-context-agent]');if(agent){selectContextAgent(agent.dataset.contextAgent,true);return;}
   const pricing=e.target.closest('[data-pricing-action]');if(pricing){pricingAction(pricing);return;}
   const unit=e.target.closest('[data-unit]');if(unit&&Object.hasOwn(unitLabels,unit.dataset.unit)){state.unit=unit.dataset.unit;state.page=0;try{localStorage.setItem('token-lens-unit',state.unit);}catch(e){}render();return;}
   const jump=e.target.closest('[data-jump-request]');if(jump){jumpRequest(jump.dataset.jumpRequest);return;}
@@ -362,7 +381,7 @@ $('#refresh').addEventListener('click',async()=>{
 });
 $('#method-button').addEventListener('click',()=>$('#method').showModal());
 $('#method').addEventListener('click',e=>{if(e.target===$('#method')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
-window.addEventListener('hashchange',()=>{state.page=0;state.execution='';state.contextAgent='';state.open.clear();messageCache.clear();load();window.scrollTo(0,0);});
+window.addEventListener('hashchange',()=>{state.page=0;state.execution='';state.contextAgent='';contextColors.clear();state.open.clear();messageCache.clear();load();window.scrollTo(0,0);});
 options().then(()=>load());
 setInterval(()=>{if(!document.hidden&&state.kind!=='pricing'&&!$('#method').open&&!refreshing&&!(state.kind==='turn'&&document.querySelector('.request-conversation')))load(true);},5000);
 setInterval(()=>{if(!document.hidden&&!refreshing)options();},60000);
