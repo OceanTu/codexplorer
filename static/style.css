@@ -114,3 +114,5 @@ body.sidebar-collapsed{--sidebar-width:68px}
 .metric-details>summary{cursor:pointer;padding:4px 0;color:#52685b}
 .metric-details[open]>summary{margin-bottom:10px}
 .metric-details .metrics{margin-bottom:0}
+
+.context-heading{flex-wrap:wrap}.context-agent-picker{display:flex;align-items:center;gap:10px;min-width:0;max-width:100%;font-size:12px}.context-agent-picker label{color:var(--muted)}.context-agent-picker select{width:360px;max-width:100%;flex:1;min-width:0;border:1px solid var(--line);border-radius:6px;background:white;padding:7px 10px;text-overflow:ellipsis}.context-chart-note{color:var(--muted);font-size:11px;margin-top:10px}@media(max-width:600px){.context-agent-picker{width:100%}.context-agent-picker select{width:0}.chart-captions{gap:8px;flex-wrap:wrap}}

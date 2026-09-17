@@ -8,7 +8,7 @@ const date = (n, detailed = false) => n ? new Date(n * 1000).toLocaleString('zh-
 const shortPath = p => p ? p.split('/').filter(Boolean).slice(-1)[0] : '未知项目';
 const ratio = (a,b) => b ? a/b : 0;
 const routeLink = (sid, tid) => '#session/' + encodeURIComponent(sid) + (tid ? '/turn/' + encodeURIComponent(tid) : '');
-const state = {range:'7', from:null, to:null, page:0, sort:'total', unit:'tokens', data:null, kind:'overview', session:null, turn:null, execution:'', metricsExpanded:false, open:new Set(), request:0};
+const state = {range:'7', from:null, to:null, page:0, sort:'total', unit:'tokens', data:null, kind:'overview', session:null, turn:null, execution:'', contextAgent:'', metricsExpanded:false, open:new Set(), request:0};
 try{const unit=localStorage.getItem('token-lens-unit');if(Object.hasOwn(unitLabels,unit))state.unit=unit;}catch(e){/* Optional display preference. */}
 let controller;
 let refreshing=false;
@@ -153,12 +153,37 @@ function sessionView(d) {
 }
 function duration(s) {return s<60?Math.round(s)+' 秒':s<3600?(s/60).toFixed(1)+' 分钟':(s/3600).toFixed(1)+' 小时';}
 function statusBadge(s) {const labels={running:'未见结束事件',completed:'已完成',interrupted:'已中断',observed:'历史记录'};return `<span class="tag ${s==='interrupted'?'warn':''}">${labels[s]||esc(s)}</span>`;}
+// Context belongs to a thread, even when that agent resumes across execution turns.
+function contextAgents(rows) {
+  const groups=new Map();
+  for(const row of rows) {
+    if(!groups.has(row.thread_id))groups.set(row.thread_id,[]);
+    groups.get(row.thread_id).push(row);
+  }
+  return [...groups].map(([id,items])=>({id,items:[...items].sort((a,b)=>a.occurred_at-b.occurred_at||a.id.localeCompare(b.id))}))
+    .sort((a,b)=>Number(Boolean(a.items[0].is_agent))-Number(Boolean(b.items[0].is_agent))||a.items[0].occurred_at-b.items[0].occurred_at||a.id.localeCompare(b.id));
+}
 function requestChart(rows) {
-  const main=rows.filter(r=>!r.is_agent), items=main.length?main:rows;
-  if (!items.length) return '';
-  const max=Math.max(1,...items.map(x=>x.input_tokens)), width=1000, height=130;
-  const points=items.map((r,i)=>`${20+(items.length>1?i/(items.length-1):.5)*960},${140-r.input_tokens/max*height}`).join(' ');
-  return `<section class="panel section-gap"><div class="panel-heading"><h2>${main.length?'主代理':'代理'}输入上下文走势</h2><small>峰值 ${compact(max)} tokens · 每条记录的输入量（含缓存）</small></div><div class="request-chart"><svg viewBox="0 0 ${width} 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(max)}"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/><polyline points="${points}" fill="none" stroke="#569174" stroke-width="2" vector-effect="non-scaling-stroke"/>${items.length===1?`<circle cx="500" cy="${140-items[0].input_tokens/max*height}" r="4" fill="#569174"/>`:''}</svg><div class="chart-captions"><span>开始 · ${compact(items[0].input_tokens)}</span><span>${items.length} 条记录</span><span>最后 · ${compact(items.at(-1).input_tokens)}</span></div></div></section>`;
+  const agents=contextAgents(rows);
+  if(!agents.length){state.contextAgent='';return '';}
+  const selected=agents.find(a=>a.id===state.contextAgent)||agents[0];
+  state.contextAgent=selected.id;
+  const items=selected.items, first=items[0];
+  const role=r=>r.is_agent?(r.source==='guardian_review'?'自动审核':'子 Agent'):'主 Agent';
+  const label=a=>{
+    const r=a.items[0], title=r.thread_title;
+    return role(r)+' · '+a.id.slice(-8)+(title&&title!==a.id&&title!==r.source?' · '+title.slice(0,48):'');
+  };
+  const peak=Math.max(...items.map(x=>x.input_tokens)), scale=Math.max(1,peak), width=1000, height=130;
+  const points=items.map((r,i)=>`${20+(items.length>1?i/(items.length-1):.5)*960},${140-r.input_tokens/scale*height}`).join(' ');
+  return `<section class="panel section-gap"><div class="panel-heading context-heading"><div><h2>${role(first)}输入上下文走势</h2><small>峰值 ${compact(peak)} tokens · 每次请求的输入量（含缓存）</small></div><div class="context-agent-picker"><label for="context-agent">Agent</label><select id="context-agent" aria-label="选择上下文 Agent" title="${esc(selected.id)}">${agents.map(a=>`<option value="${esc(a.id)}" ${a.id===selected.id?'selected':''}>${esc(label(a))} · ${a.items.length} 条</option>`).join('')}</select></div></div><div class="request-chart"><svg viewBox="0 0 ${width} 155" preserveAspectRatio="none" role="img" aria-label="${items.length} 条记录的输入 token 趋势，峰值 ${full(peak)}"><path d="M20 10H980 M20 75H980 M20 140H980" stroke="#edf1eb" fill="none"/><polyline points="${points}" fill="none" stroke="#569174" stroke-width="2" vector-effect="non-scaling-stroke"/>${items.length===1?`<circle cx="500" cy="${140-items[0].input_tokens/scale*height}" r="4" fill="#569174"/>`:''}</svg><div class="chart-captions"><span>开始 · ${compact(items[0].input_tokens)}</span><span>${items.length} 条记录 · 按请求顺序</span><span>最后 · ${compact(items.at(-1).input_tokens)}</span></div><p class="context-chart-note">仅切换此图；总消耗与请求明细不变。展示当前筛选范围内该 Agent 的记录。</p></div></section>`;
+}
+function selectContextAgent(id) {
+  if(state.kind!=='turn')return;
+  state.contextAgent=id;
+  // Leave the request table and any expanded conversation DOM untouched.
+  $('#context-chart').innerHTML=requestChart(state.data.requests);
+  $('#context-agent')?.focus();
 }
 function messageCard(m, requestId) {
   const isCall=['function_call','custom_tool_call'].includes(m.kind);
@@ -210,7 +235,7 @@ function requestDetailsRow(r) {
 function turnView(d) {
   const rows=sliced(d.requests).map(requestDetailsRow);
   const executionPicker = `<div class="execution-picker"><label for="execution">执行 Turn</label><select id="execution" aria-label="筛选执行 Turn"><option value="">全部 ${d.executions.length} 个（含续跑 / 子代理）</option>${d.executions.map((r,i)=>`<option value="${esc(r.id)}" ${state.execution===r.id?'selected':''}>${i+1}. ${r.is_agent?(r.source==='guardian_review'?'自动审核':'子代理'):'主代理'} · ${r.id.slice(-8)} · ${compact(r.total_tokens)} tokens</option>`).join('')}</select><span>可单独查看每个执行 turn 的消耗</span></div>`;
-  return executionPicker+toolOverview(d.tools)+metrics(d.summary)+requestChart(d.requests)+(rows.length?tablePanel('请求明细',d.requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','Credits 估算','工具 / 返回文本','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
+  return executionPicker+toolOverview(d.tools)+metrics(d.summary)+`<div id="context-chart">${requestChart(d.requests)}</div>`+(rows.length?tablePanel('请求明细',d.requests.length,['记录','时间','来源 / 模型','输入','缓存输入','输出','推理','总量','Credits 估算','工具 / 返回文本','依据'],rows,'点击“对话”查看上下行消息；展开阅读时暂停自动刷新。缓存 / 推理已包含在输入 / 输出中。',false):empty());
 }
 function collectionView(d) {
   const scan=d.scan||{}, hook=d.latest_hook, files=d.files||{};
@@ -302,7 +327,7 @@ document.addEventListener('click',e=>{
   if(el.dataset.action==='reset')reset(true);
 });
 document.addEventListener('input',e=>updatePricingInput(e.target));
-document.addEventListener('change',e=>{if(e.target.dataset.priceMode!==undefined||e.target.dataset.creditPreset!==undefined)updatePricingInput(e.target);});
+document.addEventListener('change',e=>{if(e.target.id==='context-agent'){selectContextAgent(e.target.value);return;}if(e.target.dataset.priceMode!==undefined||e.target.dataset.creditPreset!==undefined)updatePricingInput(e.target);});
 document.addEventListener('submit',e=>{if(e.target.id==='pricing-form'){e.preventDefault();savePricing();}});
 ['model','project','scope'].forEach(id=>$('#'+id).addEventListener('change',()=>{state.page=0;load();}));
 let debounce;$('#search').addEventListener('input',()=>{clearTimeout(debounce);debounce=setTimeout(()=>{state.page=0;load();},250);});
@@ -337,7 +362,7 @@ $('#refresh').addEventListener('click',async()=>{
 });
 $('#method-button').addEventListener('click',()=>$('#method').showModal());
 $('#method').addEventListener('click',e=>{if(e.target===$('#method')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}});
-window.addEventListener('hashchange',()=>{state.page=0;state.execution='';state.open.clear();messageCache.clear();load();window.scrollTo(0,0);});
+window.addEventListener('hashchange',()=>{state.page=0;state.execution='';state.contextAgent='';state.open.clear();messageCache.clear();load();window.scrollTo(0,0);});
 options().then(()=>load());
 setInterval(()=>{if(!document.hidden&&state.kind!=='pricing'&&!$('#method').open&&!refreshing&&!(state.kind==='turn'&&document.querySelector('.request-conversation')))load(true);},5000);
 setInterval(()=>{if(!document.hidden&&!refreshing)options();},60000);
