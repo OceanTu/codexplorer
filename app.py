@@ -2,6 +2,7 @@
 """Codex Token Lens: python3 app.py serve | sync | install-hooks."""
 import argparse
 import fcntl
+import hmac
 import json
 import logging
 import mimetypes
@@ -230,8 +231,55 @@ def serve(args):
             return self.send(200, asset.read_bytes(), (mimetypes.guess_type(str(asset))[0] or 'application/octet-stream') + '; charset=utf-8')
 
         def do_POST(self):
+            if self.path == '/v1/logs':
+                con = None
+                try:
+                    key_path = args.data_dir / 'telemetry-token'
+                    expected = key_path.read_text().strip() if key_path.exists() else ''
+                    supplied = self.headers.get('X-Token-Lens-Key', '')
+                    if not self.allowed() or self.headers.get('Origin') is not None or not expected or not hmac.compare_digest(expected.encode(), supplied.encode()):
+                        return self.send(403, {'error': 'Local telemetry authentication required'})
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < size <= 8 * 1024 * 1024:
+                        return self.send(413, {'error': 'OTLP batch exceeds 8 MiB'})
+                    if self.headers.get('Transfer-Encoding') or self.headers.get('Content-Encoding') or self.headers.get('Content-Type','').split(';')[0] != 'application/json':
+                        return self.send(400, {'error': 'Use uncompressed OTLP JSON'})
+                    self.connection.settimeout(10)
+                    payload = json.loads(self.rfile.read(size))
+                    from codex_usage.telemetry import ingest
+                    con = connect(args.data_dir)
+                    with con:
+                        ingest(con, payload)
+                    wake.set()
+                    return self.send(200, {})
+                except (ValueError, TypeError, KeyError, AttributeError, UnicodeError):
+                    return self.send(400, {'error': 'Invalid OTLP JSON'})
+                finally:
+                    if con is not None: con.close()
             if not self.allowed() or self.headers.get('Origin') not in (None, 'http://' + self.headers.get('Host', '')) or self.headers.get('X-Token-Lens') != '1':
                 return self.send(403, {'error': 'Local access only'})
+            if self.path in ('/api/supplemental/link', '/api/telemetry'):
+                con = None
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not 0 < size <= 4096 or self.headers.get('Transfer-Encoding'):
+                        return self.send(400, {'error': 'Invalid body size'})
+                    self.connection.settimeout(10)
+                    payload = json.loads(self.rfile.read(size))
+                    if not isinstance(payload, dict): raise ValueError('请求必须为对象')
+                    if self.path == '/api/telemetry':
+                        if not isinstance(payload.get('enabled'), bool): raise ValueError('enabled 必须为布尔值')
+                        from codex_usage.telemetry_config import configure
+                        return self.send(200, configure(args.codex_home,args.data_dir,args.port,payload['enabled']))
+                    from codex_usage.supplemental import link_session
+                    con = connect(args.data_dir)
+                    if not isinstance(payload.get('thread_id'),str) or not isinstance(payload.get('session_id'),str): raise ValueError('无效的会话关联')
+                    link_session(con,payload['thread_id'],payload['session_id'])
+                    return self.send(200, {'ok': True})
+                except (ValueError, TypeError, UnicodeError) as exc:
+                    return self.send(400, {'error': str(exc)})
+                finally:
+                    if con is not None: con.close()
             if self.path == '/api/pricing':
                 con = None
                 try:

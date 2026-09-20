@@ -270,6 +270,8 @@ def doctor(root, config):
 
 
 def uninstall(root, config):
+    from .telemetry_config import configure
+    configure(Path(config['codex_home']), root / 'data', config['port'], False)
     stop(root, config)
     # Keep user edits in hooks.json; remove only this installation's exact command.
     if (Path(config['codex_home']) / 'hooks.json').exists():
@@ -301,7 +303,7 @@ def main():
     parser = argparse.ArgumentParser(description='Token Lens 本机服务管理')
     parser.add_argument('--install-dir', type=lambda s: Path(s).expanduser().resolve(), default=default_root())
     parser.add_argument('command', choices=('open', 'start', 'stop', 'restart', 'status', 'doctor',
-                                           'uninstall', 'hook', 'run-service', 'sync', 'hooks', 'autostart'))
+                                           'uninstall', 'hook', 'run-service', 'sync', 'hooks', 'autostart', 'telemetry'))
     parser.add_argument('action', nargs='?', choices=('on', 'off'))
     args = parser.parse_args()
     try:
@@ -331,6 +333,11 @@ def main():
                     open_browser(config)
             elif args.command == 'uninstall':
                 uninstall(root, config)
+            elif args.command == 'telemetry':
+                if not args.action: parser.error('telemetry 需要 on 或 off')
+                from .telemetry_config import configure
+                configure(Path(config['codex_home']), root / 'data', config['port'], args.action == 'on')
+                print('本地遥测配置已更新；请在方便时重新启动 Codex。')
             elif args.command in ('hooks', 'autostart'):
                 if not args.action:
                     parser.error(args.command + ' 需要 on 或 off')

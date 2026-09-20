@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -80,6 +80,11 @@ def connect(data_dir):
                         con.execute("ALTER TABLE threads ADD COLUMN " + name + " TEXT DEFAULT ''")
                 # Agent labels are backfilled from tiny headers, without replaying usage.
                 con.execute("DELETE FROM settings WHERE key='agent_metadata_v1'")
+            if version < 5:
+                from .supplemental import SCHEMA as SUPPLEMENTAL_SCHEMA
+                for statement in SUPPLEMENTAL_SCHEMA.split(';'):
+                    if statement.strip():
+                        con.execute(statement)
             con.execute('PRAGMA user_version=%d' % SCHEMA_VERSION)
             con.commit()
         except Exception:

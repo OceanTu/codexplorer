@@ -59,3 +59,14 @@ Files: static/app.js, static/style.css, tests/test_supplemental_frontend.js, pac
 
 ## Execution record
 User confirmed the two-source plan and requested proceeding. Execute within this task; no additional design approval required under session authorization. One isolated worktree; no changes to running Codex until final local telemetry setup.
+
+
+### Implementation ledger
+- Historical recovery: tests were observed failing before implementation, now pass; real diagnostics recover the exact OCR question, five context samples and four exec calls. Copied native usage count and sum are unchanged.
+- Telemetry: actual ephemeral CLI emitted completed events with string input/output counters and integer cached/reasoning counters, but no response/turn ID. A startup prewarm completion preceded the real completion.
+- Ruling: count telemetry only when both event and diagnostic sample have a unique match on thread, model, token total and a narrow time interval, and no persisted thread exists — prevents known prewarm and cross-source duplication — may undercount unmatched events; show these as pending rather than zero.
+- Ruling: keep an incomplete Turn visible when only some samples are matched — prevents falsely claiming complete coverage — counts remain partial until later evidence arrives.
+- UI regression first failed on missing supplementalPanel, then passed. Existing Turn lazy expansion and multi-agent chart tests remain green.
+- Verification: Python baseline 62 tests passed; first integrated suite 79 tests passed. Added coverage since then is verified again before release.
+- Real app-server ephemeral validation: model gpt-5.6-luna, two response.completed events; one prewarm excluded, one diagnostic-matched request totals 9,137 tokens (9,132 input, 5 output, 5,888 cached), identical to app-server thread/tokenUsage/updated. Current app-server sends timeUnixNano=0; use timezone-qualified event.timestamp instead. Replay ignores observedTimeUnixNano, with regression RED→GREEN.
+- Installation integration verifies telemetry on after deleting the extracted package, configuration retained across upgrade, and own block/token removed on uninstall. Full suite 82 passed before the final timestamp regression; final suite follows review.

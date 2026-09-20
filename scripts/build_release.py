@@ -13,7 +13,8 @@ RUNTIME = (
     'codex_usage/__init__.py', 'codex_usage/api.py', 'codex_usage/importer.py',
     'codex_usage/messages.py', 'codex_usage/store.py', 'codex_usage/lifecycle.py',
     'codex_usage/tools.py',
-    'codex_usage/pricing.py',
+    'codex_usage/pricing.py', 'codex_usage/supplemental.py',
+    'codex_usage/telemetry.py', 'codex_usage/telemetry_config.py',
     'codex_usage/installation.py',
     'static/index.html', 'static/app.js', 'static/pricing.js', 'static/style.css', 'static/favicon.svg',
 )

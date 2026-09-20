@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta
 from .tools import attach as attach_tools, combine as combine_tools
 from .pricing import Pricing, aggregate_costs
+from .supplemental import supplemental, collection_status
 
 TOKEN_FIELDS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens',
                 'output_tokens', 'reasoning_output_tokens', 'total_tokens')
@@ -11,6 +12,7 @@ TOKEN_FIELDS = ('input_tokens', 'cached_input_tokens', 'cache_write_input_tokens
 def aggregate(rows):
     result = {k: sum(r[k] for r in rows) for k in TOKEN_FIELDS}
     result.update(requests=len(rows), exact_requests=sum(r['kind'] == 'exact' for r in rows),
+                  telemetry_requests=sum(r['kind']=='telemetry_verified' for r in rows),
                   sessions=len({r['session_id'] for r in rows}),
                   turns=len({(r['session_id'], r['root_turn_id']) for r in rows}),
                   agent_tokens=sum(r['total_tokens'] for r in rows if r['is_agent']),
@@ -108,11 +110,14 @@ class API:
         if clauses:
             sql += ' WHERE ' + ' AND '.join(clauses)
         rows = [dict(r) for r in self.con.execute(sql + ' ORDER BY u.occurred_at,u.id', args)]
+        from .telemetry import measured_rows
+        rows.extend(measured_rows(self.con, params, session, turn))
+        rows.sort(key=lambda r: (r['occurred_at'], r['id']))
         pricing = Pricing(self.con)
         self.credit_reference = pricing.config['credit_reference']
         names = agent_labels(self.con)
         for row in rows:
-            row['agent_label'] = names.get(row['thread_id'], '子 Agent' if row['is_agent'] else '主 Agent')
+            row['agent_label'] = row.get('agent_label') or names.get(row['thread_id'], '子 Agent' if row['is_agent'] else '主 Agent')
             row['costs'] = pricing.estimate(row)
         return rows
 
@@ -124,7 +129,7 @@ class API:
         unmeasured = self.con.execute('SELECT COUNT(*) FROM threads t WHERE NOT EXISTS(SELECT 1 FROM usage u WHERE u.thread_id=t.id)').fetchone()[0]
         return dict(scan=scan, files=file_stats, latest_hook=dict(hook) if hook else None,
                     hooks_received=self.con.execute('SELECT COUNT(*) FROM hook_events').fetchone()[0],
-                    unmeasured_threads=unmeasured)
+                    unmeasured_threads=unmeasured, supplemental=collection_status(self.con))
 
     def overview(self, params):
         rows = self.rows(params)
@@ -148,13 +153,14 @@ class API:
                          for i in range((end - start).days + 1)]
         models = [dict(model=name, **aggregate(items)) for name, items in group(rows, lambda r: r['model']).items()]
         models.sort(key=lambda r: r['total_tokens'], reverse=True)
-        return dict(summary=aggregate(rows), sessions=sessions, daily=daily, models=models,
+        return dict(supplemental=supplemental(self.con, params), summary=aggregate(rows), sessions=sessions, daily=daily, models=models,
                     credit_reference=self.credit_reference,
                     status=self.status(), generated_at=time.time())
 
     def options(self):
-        return dict(models=[r[0] for r in self.con.execute('SELECT DISTINCT model FROM usage ORDER BY model')],
-                    projects=[r[0] for r in self.con.execute("SELECT DISTINCT cwd FROM threads WHERE cwd!='' ORDER BY cwd")],
+        return dict(models=[r[0] for r in self.con.execute('SELECT model FROM usage UNION SELECT model FROM observed_turns UNION SELECT model FROM telemetry_events ORDER BY model')],
+                    projects=[r[0] for r in self.con.execute("SELECT cwd FROM threads WHERE cwd!='' UNION SELECT project FROM observed_turns WHERE project!='' ORDER BY 1")],
+                    sessions=[dict(r) for r in self.con.execute('SELECT id,title FROM threads WHERE id=session_id ORDER BY created_at DESC')],
                     first_at=self.con.execute('SELECT MIN(occurred_at) FROM usage').fetchone()[0])
 
     def session(self, sid, params):
@@ -176,8 +182,10 @@ class API:
                               tools=combine_tools(r['tools'] for r in items), **aggregate(items)))
         turns.sort(key=lambda r: r['first_at'])
         for turn in turns:
-            turn['number'] = ordinals[turn['id']]
-        return dict(id=sid, title=rows[-1]['session_title'] if rows else sid, summary=aggregate(rows), turns=turns,
+            turn['number'] = ordinals.get(turn['id'], len(ordinals) + 1)
+            if turn['id'] not in ordinals:
+                ordinals[turn['id']] = turn['number']
+        return dict(supplemental=supplemental(self.con, params, sid), id=sid, title=rows[-1]['session_title'] if rows else sid, summary=aggregate(rows), turns=turns,
                     credit_reference=self.credit_reference)
 
     def turn(self, sid, tid, params):

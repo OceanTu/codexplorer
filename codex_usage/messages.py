@@ -284,6 +284,9 @@ class RequestMessages:
         return sorted(primary, key=lambda m: m['byte_offset'])
 
     def read(self, request_id, message_id=None, offset=0):
+        if request_id.startswith('telemetry:'):
+            from .telemetry import messages
+            return messages(self.con, request_id)
         try:
             return self._read(request_id, message_id, offset)
         except OSError as e:

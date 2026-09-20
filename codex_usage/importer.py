@@ -356,6 +356,8 @@ class Importer:
             if progress:
                 progress(dict(running=True, completed=number, total=len(files), started_at=started_at))
         self.metadata()
+        from .supplemental import scan_diagnostics
+        scan_diagnostics(self.con, self.home)
         pending = list((Path(data_dir) / 'pending').glob('*.json'))
         accepted = []
         for path in pending:
