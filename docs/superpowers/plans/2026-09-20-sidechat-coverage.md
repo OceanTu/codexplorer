@@ -55,7 +55,7 @@ Files: static/app.js, static/style.css, tests/test_supplemental_frontend.js, pac
 - [x] Integrate packaging allowlist and documentation, update version, run Python suite, all JS tests and syntax checks.
 - [x] Validate real history against an index copy; confirm OCR prompt appears without changing accounted totals. Run real ephemeral telemetry comparison.
 - [x] Obtain final fresh code review while performing release checks, address important findings with failing regression tests first.
-- [ ] Build and verify ZIP, update installed version, enable local telemetry config, verify service and explain pending Codex restart.
+- [x] Build and verify ZIP, update installed version, enable local telemetry config, verify service and explain pending Codex restart.
 
 ## Execution record
 User confirmed the two-source plan and requested proceeding. Execute within this task; no additional design approval required under session authorization. One isolated worktree; no changes to running Codex until final local telemetry setup.
@@ -73,3 +73,8 @@ User confirmed the two-source plan and requested proceeding. Execute within this
 
 - Final review: independent fresh-context reviewer identified three P2 issues. All fixed with focused regressions observed failing before implementation: in-place diagnostic reset with reused IDs and identical checkpoint body, literal thread_settings inside user text, quoted TOML OTel keys. No deferred findings or declined judgments.
 - Browser verification: the original session shows a collapsed supplemental section; opening the single OCR row displays the exact input, 35,742 → 46,733 → 59,301 → 66,080 → 68,533 context observations, four exec calls, unknown usage, and the explicitly selected parent session. Collection page renders local telemetry controls and source limits.
+
+- Final verification: 86 Python tests, all four JavaScript behavioral suites, Python compilation, JavaScript syntax and git diff checks passed. Final real-history repeat again recovered OCR with unchanged native usage.
+- Release: v0.2.11 allowlisted ZIP and SHA-256 built in formal source dist/. Installed through extracted ZIP; all 20 runtime files byte-identical to source. Managed exporter enabled on port 8765 with prior configuration backed up; current Codex intentionally not restarted.
+- Installed end-to-end: posted captured real app-server telemetry twice through the authenticated installed receiver; exactly one 9,137-token request was counted. OCR side thread explicitly linked to its user-confirmed parent through the installed API and expanded in the actual browser. No hardcoded user IDs in product or distributable.
+- Final integration: local main fast-forwarded; native managed worktree retained with ignored private validation evidence. No remote publication.
