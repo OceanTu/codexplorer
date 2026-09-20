@@ -93,3 +93,16 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(decode_string(r'"hello \u{4e2d}"'),'hello 中')
         self.assertEqual(decode_string(r'"literal \\u{4e2d}"'),r'literal \u{4e2d}')
         self.assertEqual(decode_string(r'"quote \u{22}"'),'quote "')
+
+    def test_in_place_log_reset_with_same_checkpoint_body_rescans(self):
+        self.add(prompt('old prompt'))
+        self.add('checkpoint',BASE+1,'routine');self.scan()
+        self.logs.execute('DELETE FROM logs');self.logs.commit()
+        self.add(prompt('new prompt',turn='new-turn'),BASE+20)
+        self.add('checkpoint',BASE+21,'routine');self.scan()
+        self.assertEqual({r['preview'] for r in self.recovered()},{'old prompt','new prompt'})
+
+    def test_structural_field_name_inside_prompt_is_preserved(self):
+        text='Explain thread_settings: and Text { text: "example" } in the schema'
+        self.add(prompt(text));self.scan()
+        self.assertEqual(self.recovered()[0]['prompt'],text)

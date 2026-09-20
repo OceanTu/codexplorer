@@ -21,7 +21,7 @@ def configure(home, data, port, enabled):
         raise ValueError('本工具的遥测配置已被修改，已保留；请先核对 config.toml')
     remaining=original.replace(prior,'',1) if prior and prior in original else original
     if enabled:
-        if re.search(r'^\s*(?:\[\s*[\"\']?otel(?:[\"\']?\s*\]|\.)|otel\s*[.=])',remaining,re.M):
+        if re.search(r"^\s*(?:\[\s*[\"']?otel[\"']?\s*(?:\]|\.)|[\"']?otel[\"']?\s*[.=])",remaining,re.M):
             raise ValueError('已有 OTel 配置，未覆盖；请将现有采集器转发至本地，或手动整合')
         token=token_path.read_text().strip() if token_path.exists() else secrets.token_hex(32)
         block='\n'+START+'\n[otel]\nlog_user_prompt = true\nexporter = { otlp-http = { endpoint = "http://127.0.0.1:%d/v1/logs", protocol = "json", headers = { "X-Token-Lens-Key" = "%s" } } }\n%s\n' % (port,token,END)

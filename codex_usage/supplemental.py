@@ -84,7 +84,10 @@ def consume_log(con, row):
         if not start:
             return
         turn_id = decode_string(start[1])
-        content = body[start.end():].split('thread_settings:',1)[0]
+        content = body[start.end():]
+        boundary = next((m.start() for m in re.finditer(QUOTED+r'|thread_settings:',content)
+                         if m[0]=='thread_settings:'),len(content))
+        content = content[:boundary]
         texts = [decode_string(m[1]) for m in re.finditer(r'Text \{ text: ('+QUOTED+')',content)]
         cwd = re.search(r'(?:legacy_fallback_cwd|cwd): (?:Some\()?AbsolutePathBuf\(('+QUOTED+r')\)',body)
         observe(con,thread,turn_id,ts,model_name,decode_string(cwd[1]) if cwd else '', '\n'.join(texts))
@@ -102,6 +105,11 @@ def consume_log(con, row):
                 (digest(thread+'|'+str(ts)+'|'+body),thread,turn[1],tool[1]))
 
 
+def log_fingerprint(row):
+    # A recycled row ID and routine body can coincide after in-place rotation.
+    return digest(json.dumps(list(row),ensure_ascii=False))
+
+
 def scan_diagnostics(con, home):
     report = dict(rows=0, errors=[], scanned_at=time.time())
     for path in sorted(Path(home).glob('logs_*.sqlite')):
@@ -114,8 +122,8 @@ def scan_diagnostics(con, home):
             inode = path.stat().st_ino
             after = last['last_id'] if last and last['inode']==inode else 0
             if after:
-                anchor = src.execute('SELECT feedback_log_body FROM logs WHERE id=?',(after,)).fetchone()
-                if not anchor or digest(anchor[0] or '')!=last['anchor']:
+                anchor = src.execute('SELECT id,ts,ts_nanos,target,thread_id,feedback_log_body FROM logs WHERE id=?',(after,)).fetchone()
+                if not anchor or log_fingerprint(anchor)!=last['anchor']:
                     after=0
             # Bounded batches; continuing scans catch up without blocking the UI.
             rows = src.execute('SELECT id,ts,ts_nanos,target,thread_id,feedback_log_body FROM logs WHERE id>? ORDER BY id LIMIT 5000',(after,)).fetchall()
@@ -129,7 +137,7 @@ def scan_diagnostics(con, home):
             if rows:
                 end=rows[-1]
                 con.execute('INSERT OR REPLACE INTO diagnostic_cursors VALUES (?,?,?,?)',
-                            (str(path),inode,end['id'],digest(end['feedback_log_body'] or '')))
+                            (str(path),inode,end['id'],log_fingerprint(end)))
         except (OSError,sqlite3.Error) as exc:
             report['errors'].append(path.name+': '+str(exc))
         finally:

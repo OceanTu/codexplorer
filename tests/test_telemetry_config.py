@@ -36,3 +36,11 @@ class ConfigurationTests(unittest.TestCase):
             path.write_text(edited)
             with self.assertRaises(ValueError):configure(home,data,8765,False)
             self.assertEqual(path.read_text(),edited)
+
+    def test_quoted_otel_keys_are_preserved(self):
+        from codex_usage.telemetry_config import configure
+        for original in ['"otel" = { exporter = "none" }\n', "'otel' = { exporter = 'none' }\n", '["otel"."exporter"]\nvalue="none"\n']:
+            with self.subTest(original=original),tempfile.TemporaryDirectory() as temp:
+                home=Path(temp);path=home/'config.toml';path.write_text(original)
+                with self.assertRaises(ValueError):configure(home,home/'data',8765,True)
+                self.assertEqual(path.read_text(),original)
