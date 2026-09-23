@@ -165,6 +165,55 @@ class PricingTests(unittest.TestCase):
             with self.assertRaises(ValueError): pricing.save(changed)
         self.assertEqual(pricing.settings()['revision'], original['revision'])
 
+    def test_gpt6_sol_luna_standard_cache_write_and_reasoning(self):
+        from codex_usage.pricing import Pricing
+        pricing = Pricing(self.con)
+        # 10K uncached, 80K cache reads, 10K cache writes, 2K visible + 8K reasoning.
+        for model, credits, usd in [('gpt-6-sol', 3.9, .161), ('gpt-6-luna', .195, .00805)]:
+            with self.subTest(model=model):
+                row = dict(model=model, **tokens(100000, 80000, 10000, 8000))
+                row['cache_write_input_tokens'] = 10000
+                cost = pricing.estimate(row)
+                self.assertIsNotNone(cost['credits']['total'])
+                self.assertAlmostEqual(cost['credits']['total'], credits)
+                self.assertAlmostEqual(cost['usd']['total'], usd)
+
+    def test_gpt6_sol_luna_fast_and_long_context_boundary(self):
+        from codex_usage.pricing import Pricing
+        pricing = Pricing(self.con)
+        config = pricing.settings()
+        for m in config['models']:
+            if m['model'] in ('gpt-6-sol','gpt-6-luna'): m['mode'] = 'fast'
+        pricing.save(config)
+        for name, short_usd, long_usd, short_credits in [
+                ('gpt-6-sol', .568, 1.036008, 17.75),
+                ('gpt-6-luna', .0284, .0518004, .8875)]:
+            with self.subTest(model=name):
+                row = dict(model=name, **tokens(272000, 200000, 10000, 8000))
+                short = pricing.estimate(row)
+                long = pricing.estimate(dict(row, input_tokens=272001))
+                self.assertIsNotNone(short['usd']['total'])
+                self.assertAlmostEqual(short['usd']['total'], short_usd)
+                self.assertAlmostEqual(long['usd']['total'], long_usd)
+                self.assertAlmostEqual(short['credits']['total'], short_credits)
+                self.assertFalse(short['usd']['long_context'])
+                self.assertTrue(long['usd']['long_context'])
+                self.assertFalse(long['credits']['long_context'])
+
+    def test_new_models_join_saved_rates_without_overwriting_custom_values(self):
+        from codex_usage.pricing import Pricing, blank_model
+        old = blank_model('gpt-6-astra'); old['credits']['input_per_million'] = 123
+        sol = blank_model('gpt-6-sol'); sol['usd']['input_per_million'] = 7
+        reference = dict(name='我的套餐', credits=12600)
+        saved = json.dumps(dict(version=2, models=[old,sol], credit_reference=reference))
+        self.con.execute("INSERT INTO settings VALUES ('pricing',?)", (saved,)); self.con.commit()
+        config = Pricing(self.con).settings(); models = {m['model']:m for m in config['models']}
+        self.assertIn('gpt-6-luna', models)
+        self.assertEqual(models['gpt-6-astra'], old)
+        self.assertEqual(models['gpt-6-sol'], sol)
+        self.assertEqual(config['credit_reference'], reference)
+        self.assertEqual(self.con.execute("SELECT value FROM settings WHERE key='pricing'").fetchone()[0], saved)
+
 
 if __name__ == '__main__':
     unittest.main()

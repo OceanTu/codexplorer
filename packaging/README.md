@@ -2,6 +2,19 @@
 
 在本机查看 Codex 的 Session、Turn 和每次请求的 token 消耗，支持展开可见对话。统计不调用模型、不需要 API key，数据留在自己的电脑上。
 
+## v0.2.12 GPT-6 Sol / Luna 费率
+
+新增两款模型的默认费率，核对日期 2026-09-23。以下均为每百万 tokens、Standard 模式：
+
+| 模型 | Credits 输入 / 缓存读取 / 输出 | 美元输入 / 缓存读取 / 缓存写入 / 输出 |
+|---|---|---|
+| gpt-6-sol | 50 / 5 / 250 | $2 / $0.20 / $2.50 / $10 |
+| gpt-6-luna | 2.5 / 0.25 / 12.5 | $0.10 / $0.01 / $0.125 / $0.50 |
+
+Credits Fast 倍率为 2.5，API Fast 倍率为 2；API 输入超过 272,000 tokens 时整条请求输入及缓存 ×2、输出 ×1.5。推理包含于输出，不重复计费。沿用现有的 Standard 默认估算方式；用户保存的模型费率和套餐额度优先，不覆盖自定义值。升级后刷新页面即可按新默认值计算这两款模型的历史消耗，无需重扫。
+
+来源：[Codex Credits](https://learn.chatgpt.com/docs/pricing)、[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)、[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)。
+
 ## v0.2.11 侧聊补采
 
 - 总览及所属 Session 增加默认折叠的“补充采集记录”，恢复诊断日志里的用户输入、模型、项目、工具名称和上下文观测。支持现有筛选和搜索；展开记录可手动关联所属会话，不根据时间或目录猜归属。
