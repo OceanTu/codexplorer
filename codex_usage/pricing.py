@@ -6,18 +6,18 @@ import re
 
 UNITS = ('credits', 'usd')
 PARTS = ('input', 'cached', 'cache_write', 'output', 'reasoning')
-VERIFIED_AT = '2026-09-23'
+VERIFIED_AT = '2026-09-30'
 DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=50400)
 SOURCES = [
     ('Codex credits', 'https://learn.chatgpt.com/docs/pricing'),
     ('Codex Fast', 'https://learn.chatgpt.com/docs/agent-configuration/speed'),
     ('缓存规则', 'https://developers.openai.com/api/docs/guides/prompt-caching'),
 ] + [(name, 'https://developers.openai.com/api/docs/models/' + name)
-     for name in ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna')]
+     for name in ('gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna')]
 
 
-def rate(base=None, output=1, api=False):
-    return dict(input_per_million=base, cached_multiplier=.1,
+def rate(base=None, output=1, api=False, cached=.1):
+    return dict(input_per_million=base, cached_multiplier=cached,
                 cache_write_multiplier=1.25 if api else 1,
                 output_multiplier=output, reasoning_multiplier=output,
                 fast_multiplier=2 if api else 2.5,
@@ -27,11 +27,13 @@ def rate(base=None, output=1, api=False):
 
 
 def defaults():
-    return [dict(model=name, mode='standard', credits=rate(credits, output), usd=rate(usd, output, True))
-            for name, credits, usd, output in [('gpt-6-astra', 250, 10, 5),
-                ('gpt-6-sol', 50, 2, 5), ('gpt-6-luna', 2.5, .1, 5),
-                ('gpt-5.6-sol', 100, 4, 5), ('gpt-5.6-terra', 50, 2, 6),
-                ('gpt-5.6-luna', 5, .2, 6)]]
+    return [dict(model=name, mode='standard', credits=rate(credits, output, cached=cached),
+                 usd=rate(usd, output, True, cached=cached))
+            for name, credits, usd, output, cached in [('gpt-6-astra', 250, 10, 5, .1),
+                ('gpt-6.1-sol', 50, 2, 5, .05),
+                ('gpt-6-sol', 50, 2, 5, .1), ('gpt-6-luna', 2.5, .1, 5, .1),
+                ('gpt-5.6-sol', 100, 4, 5, .1), ('gpt-5.6-terra', 50, 2, 6, .1),
+                ('gpt-5.6-luna', 5, .2, 6, .1)]]
 
 
 def blank_model(name):

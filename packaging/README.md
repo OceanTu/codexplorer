@@ -2,6 +2,14 @@
 
 在本机查看 Codex 的 Session、Turn 和每次请求的 token 消耗，支持展开可见对话。统计不调用模型、不需要 API key，数据留在自己的电脑上。
 
+## v0.2.13 GPT-6.1 Sol 费率
+
+新增 `gpt-6.1-sol` 默认费率，核对日期 2026-09-30。每百万 tokens、Standard 模式下，Credits 普通输入 / 缓存读取 / 输出为 **50 / 2.5 / 250**，API 美元普通输入 / 缓存读取 / 缓存写入 / 输出为 **$2 / $0.10 / $2.50 / $10**。缓存读取倍率为普通输入的 0.05，与 GPT-6 Sol 的 0.1 区分；推理已包含在输出中。
+
+API 超过 272,000 输入 tokens 时沿用输入及缓存 ×2、输出 ×1.5。默认仍使用 Standard，沿用现有 Fast 估算配置；本次仅补模型，未引入订阅内含用量与购买 credits 的两套加速倍率。50,400 套餐参考额度及已保存自定义费率保持原值。刷新页面即可按新增默认费率计算历史记录，无需重扫；若已为该模型保存自定义配置，则继续优先使用自定义值。
+
+来源：[Codex Credits](https://learn.chatgpt.com/docs/pricing)、[GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)。
+
 ## v0.2.12 GPT-6 Sol / Luna 费率
 
 新增两款模型的默认费率，核对日期 2026-09-23。以下均为每百万 tokens、Standard 模式：
