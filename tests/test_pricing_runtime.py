@@ -52,7 +52,7 @@ class PricingRuntimeTests(unittest.TestCase):
             before = request('/api/overview')['summary']
             self.assertAlmostEqual(before['costs']['usd']['total'], .69)
             config = request('/api/pricing')
-            self.assertEqual(config['credit_reference']['credits'],50400)
+            self.assertEqual(config['credit_reference']['credits'],25200)
             config['credit_reference'] = dict(name='测试套餐', credits=12600)
             astra = next(m for m in config['models'] if m['model']=='gpt-6-astra')
             astra['usd']['input_per_million'] = 20

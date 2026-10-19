@@ -7,7 +7,7 @@ import re
 UNITS = ('credits', 'usd')
 PARTS = ('input', 'cached', 'cache_write', 'output', 'reasoning')
 VERIFIED_AT = '2026-09-30'
-DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=50400)
+DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=25200)
 SOURCES = [
     ('Codex credits', 'https://learn.chatgpt.com/docs/pricing'),
     ('Codex Fast', 'https://learn.chatgpt.com/docs/agent-configuration/speed'),

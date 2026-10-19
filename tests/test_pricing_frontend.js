@@ -36,8 +36,8 @@ assert.equal(vm.runInContext('amount(.0125,"usd",true)',sandbox),'$0.0125', 'Pre
 assert.match(vm.runInContext('costCell(example,"usd")',sandbox),/\$2.00/);
 assert.match(vm.runInContext('costHint(example.costs.usd,"usd")',sandbox),/^\$2.00 usd/);
 assert.equal(vm.runInContext('amount(.0125,"credits",true)',sandbox),'0.0125', 'Do not round editable rate previews');
-assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'50.0%');
-assert.equal(vm.runInContext('creditsShare(100800)',sandbox),'200.0%');
+assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'100.0%');
+assert.equal(vm.runInContext('creditsShare(100800)',sandbox),'400.0%');
 assert.equal(vm.runInContext('creditsShare(0)',sandbox),'0.0%');
 assert.equal(vm.runInContext('creditsShare(20)',sandbox),'<0.1%');
 assert.equal(vm.runInContext('creditsShare(null)',sandbox),'未定价');
@@ -57,7 +57,7 @@ handlers.get('toggle')({target:{id:'metric-details',open:true}});
 assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details" open>/);
 handlers.get('toggle')({target:{id:'metric-details',open:false}});
 assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details">/);
-assert.match(vm.runInContext('metrics(reference)',sandbox),/占 50,400：50.0%/);
+assert.match(vm.runInContext('metrics(reference)',sandbox),/占 25,200：100.0%/);
 assert.match(vm.runInContext('metrics(reference)',sandbox),/已知部分/);
 assert.match(vm.runInContext('costSummary(reference)',sandbox),/7 天 ×20 套餐等价/);
 vm.runInContext("state.data={credit_reference:{name:'自定义 <套餐>',credits:12600}}",sandbox);
@@ -88,7 +88,7 @@ const card={input_per_million:10,cached_multiplier:.1,cache_write_multiplier:1.2
   output_multiplier:5,reasoning_multiplier:5,fast_multiplier:2,long_context_threshold:272000,
   long_input_multiplier:2,long_output_multiplier:1.5};
 sandbox.config={revision:'revision-1',verified_at:'2026-09-14',sources:[],observed_models:['gpt-6-astra'],
-  credit_reference:{name:'7 天 ×20 套餐等价',credits:50400},
+  credit_reference:{name:'7 天 ×20 套餐等价',credits:25200},
   defaults:[],models:[{model:'gpt-6-astra',mode:'standard',usd:{...card},credits:{...card,input_per_million:250}}]};
 vm.runInContext("state.kind='pricing';state.data=config;render();",sandbox);
 assert.match(el('#content').innerHTML,/缓存读取倍率/);
@@ -99,14 +99,14 @@ assert.match(el('#content').innerHTML,/参考 Credits 额度/);
 assert.match(el('#content').innerHTML,/套餐预设/);
 assert.match(el('#content').innerHTML,/×1 · 2,520 credits/);
 assert.match(el('#content').innerHTML,/×5 · 12,600 credits/);
-assert.match(el('#content').innerHTML,/×20 · 50,400 credits/);
+assert.match(el('#content').innerHTML,/×20 · 25,200 credits/);
 assert.match(el('#content').innerHTML,/value="20" selected/);
 assert.match(el('#content').innerHTML,/自定义/);
 assert.match(el('#content').innerHTML,/美元/);
 // Edits survive subsequent renders and are sent with the original revision.
 vm.runInContext("updatePricingInput({dataset:{priceModel:'0',priceUnit:'usd',priceField:'cached_multiplier'},value:'0.2'});render();",sandbox);
 assert.equal(vm.runInContext('pricingEditor.draft.models[0].usd.cached_multiplier',sandbox),.2);
-for(const [preset,credits] of [['1',2520],['5',12600],['20',50400]]){
+for(const [preset,credits] of [['1',2520],['5',12600],['20',25200]]){
   handlers.get('change')({target:{dataset:{creditPreset:''},value:preset}});
   assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),credits);
   assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.name',sandbox),`7 天 ×${preset} 套餐等价`);
@@ -115,7 +115,7 @@ for(const [preset,credits] of [['1',2520],['5',12600],['20',50400]]){
 }
 handlers.get('change')({target:{dataset:{creditPreset:''},value:'custom'}});
 assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.name',sandbox),'自定义套餐');
-assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),50400);
+assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),25200);
 handlers.get('input')({target:{dataset:{creditReference:'name'},value:'新套餐'}});
 handlers.get('input')({target:{dataset:{creditReference:'credits'},value:'12600'}});
 assert.equal(el('[data-credit-preset]').value,'custom', 'A custom name at a preset amount stays custom');
@@ -124,7 +124,7 @@ assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.name',sandbox
 vm.runInContext('render()',sandbox);
 assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),12600);
 assert.match(el('#content').innerHTML,/value="新套餐"/);
-assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'50.0%', 'Unsaved drafts do not change the active reference');
+assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'100.0%', 'Unsaved drafts do not change the active reference');
 sandbox.fetch=async(url,options)=>{sent.push({url,options});return{ok:true,json:async()=>({...sandbox.config,...JSON.parse(options.body),revision:'revision-2'})};};
 (async()=>{
   await vm.runInContext('savePricing()',sandbox);
