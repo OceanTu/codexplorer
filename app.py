@@ -353,7 +353,7 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     server = sub.add_parser('serve')
     server.add_argument('--port', type=int, default=8765)
-    server.add_argument('--interval', type=float, default=3.0)
+    server.add_argument('--interval', type=float, default=15.0)
     server.add_argument('--service-id', default='')
     importer = sub.add_parser('sync')
     importer.add_argument('--rebuild', action='store_true', help='Rebuild the derived index; original Codex logs are read-only')
