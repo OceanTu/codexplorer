@@ -110,6 +110,19 @@ Sol 为促销价，官方注明至少持续到 2026-11-21。自动审核 `codex-
 
 官方来源：[GPT-6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Codex credits](https://learn.chatgpt.com/docs/pricing)、[Fast](https://learn.chatgpt.com/docs/agent-configuration/speed)、[API 缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)。
 
+## GitHub 自动发布
+
+`.github/workflows/release.yml` 在推送 `v*` 版本标签时运行：校验标签与 `VERSION` 一致，在 macOS 上运行完整 Python 和前端测试、检查语法，然后调用现有打包脚本，创建 GitHub Release 并上传 macOS ZIP 和 `.zip.sha256` 校验文件。测试失败或版本不匹配时不发布；普通分支提交不触发发布。
+
+修改 `VERSION`、提交并推送代码后发布对应标签，例如：
+
+```sh
+git tag -a v0.2.17 -m "Token Lens v0.2.17"
+git push origin v0.2.17
+```
+
+在仓库 Actions 查看运行进度，在 Releases 下载安装包。工作流使用 GitHub 自动提供的 `GITHUB_TOKEN` 和 `contents: write` 权限，不需要配置个人 token 或上传本机 deploy key；仓库需允许使用 GitHub Actions。已有同名 Release 时创建失败，不覆盖已发布产物。
+
 ## 数据与维护
 
 原始读取目录：`$CODEX_HOME/sessions`、`$CODEX_HOME/archived_sessions`（默认 `~/.codex`）。没有读取 `auth.json`。索引在 `.data/usage.sqlite3`，仅保存计数、关联 ID、时间、模型、项目路径与最多 240 字的用户摘要；不复制完整对话或工具输出。请求对话在展开时才从索引指向的原始日志中读取，并通过本机接口显示，正文不写入数据库。`.data/` 已从 Git 排除。
