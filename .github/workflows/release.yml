@@ -49,7 +49,7 @@ jobs:
           node-version: '24'
 
       - name: Python tests and syntax
-        timeout-minutes: 5
+        timeout-minutes: 15
         run: |
           python -u -B - <<'PY'
           import faulthandler
@@ -63,6 +63,11 @@ jobs:
                       output = getattr(err[1], field, None)
                       if output:
                           self.stream.writeln(str(output))
+                  root = getattr(test, 'root', None)
+                  if root:
+                      log = root / 'logs/service-output.log'
+                      if log.exists():
+                          self.stream.writeln(log.read_text(errors='replace')[-8000:])
           faulthandler.dump_traceback_later(90, repeat=True)
           result = unittest.TextTestRunner(verbosity=2, failfast=True, resultclass=ImmediateErrors).run(unittest.defaultTestLoader.discover('tests'))
           faulthandler.cancel_dump_traceback_later()

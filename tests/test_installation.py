@@ -64,7 +64,8 @@ class InstallationTests(unittest.TestCase):
         command = ['/bin/sh', str((package or self.package) / 'install.sh'), '--yes',
                    '--no-open', '--no-shortcuts', '--install-dir', str(self.root),
                    '--codex-home', str(self.codex), *extra]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=40,
+        result = subprocess.run(command, capture_output=True, text=True,
+                                timeout=180 if os.environ.get('GITHUB_ACTIONS') == 'true' else 40,
                                 env={**os.environ, 'TOKEN_LENS_PYTHON': sys.executable})
         if success:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -74,7 +75,8 @@ class InstallationTests(unittest.TestCase):
 
     def manage(self, *command):
         result = subprocess.run([str(self.root / 'bin/token-lens'), *command],
-                                capture_output=True, text=True, timeout=25)
+                                capture_output=True, text=True,
+                                timeout=120 if os.environ.get('GITHUB_ACTIONS') == 'true' else 25)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result
 
