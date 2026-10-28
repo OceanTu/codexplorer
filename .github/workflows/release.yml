@@ -55,8 +55,16 @@ jobs:
           import faulthandler
           import sys
           import unittest
+          class ImmediateErrors(unittest.TextTestResult):
+              def addError(self, test, err):
+                  super().addError(test, err)
+                  self.stream.writeln(self._exc_info_to_string(err, test))
+                  for field in ('stdout', 'stderr'):
+                      output = getattr(err[1], field, None)
+                      if output:
+                          self.stream.writeln(str(output))
           faulthandler.dump_traceback_later(90, repeat=True)
-          result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('tests'))
+          result = unittest.TextTestRunner(verbosity=2, failfast=True, resultclass=ImmediateErrors).run(unittest.defaultTestLoader.discover('tests'))
           faulthandler.cancel_dump_traceback_later()
           sys.exit(not result.wasSuccessful())
           PY
