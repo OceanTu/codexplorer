@@ -123,6 +123,8 @@ git push origin v0.2.17
 
 在仓库 Actions 查看运行进度，在 Releases 下载安装包。工作流使用 GitHub 自动提供的 `GITHUB_TOKEN` 和 `contents: write` 权限，不需要配置个人 token 或上传本机 deploy key；仓库需允许使用 GitHub Actions。已有同名 Release 时创建失败，不覆盖已发布产物。
 
+若首次构建失败，可在 Actions → Release → Run workflow 中选择 `main` 并填写已有版本标签重试。手动运行使用当前工作流，但检出并打包指定标签的源码，仍校验其 `VERSION`。Python 测试逐项输出，每 90 秒输出一次卡住时的线程堆栈，并在 5 分钟后超时失败。
+
 ## 数据与维护
 
 原始读取目录：`$CODEX_HOME/sessions`、`$CODEX_HOME/archived_sessions`（默认 `~/.codex`）。没有读取 `auth.json`。索引在 `.data/usage.sqlite3`，仅保存计数、关联 ID、时间、模型、项目路径与最多 240 字的用户摘要；不复制完整对话或工具输出。请求对话在展开时才从索引指向的原始日志中读取，并通过本机接口显示，正文不写入数据库。`.data/` 已从 Git 排除。

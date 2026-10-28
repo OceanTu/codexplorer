@@ -4,29 +4,38 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to build, e.g. v0.2.17'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   release:
     runs-on: macos-latest
     timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Check tag matches VERSION
         shell: bash
         run: |
           set -euo pipefail
           version=$(cat VERSION)
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$RELEASE_TAG" != "v$version" ]]; then
             echo '::error::Release tag must be vMAJOR.MINOR.PATCH and match VERSION.'
             exit 1
           fi
@@ -40,8 +49,17 @@ jobs:
           node-version: '24'
 
       - name: Python tests and syntax
+        timeout-minutes: 5
         run: |
-          python -B -m unittest discover -s tests
+          python -u -B - <<'PY'
+          import faulthandler
+          import sys
+          import unittest
+          faulthandler.dump_traceback_later(90, repeat=True)
+          result = unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover('tests'))
+          faulthandler.cancel_dump_traceback_later()
+          sys.exit(not result.wasSuccessful())
+          PY
           python -m compileall -q app.py manage.py installer.py codex_usage scripts tests
 
       - name: JavaScript tests and syntax
@@ -61,6 +79,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          archive="dist/token-lens-${GITHUB_REF_NAME}-macos.zip"
-          gh release create "$GITHUB_REF_NAME" "$archive" "$archive.sha256" \
-            --verify-tag --title "Token Lens ${GITHUB_REF_NAME}" --generate-notes
+          archive="dist/token-lens-${RELEASE_TAG}-macos.zip"
+          gh release create "$RELEASE_TAG" "$archive" "$archive.sha256" \
+            --verify-tag --title "Token Lens ${RELEASE_TAG}" --generate-notes
