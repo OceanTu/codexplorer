@@ -170,7 +170,7 @@ class PricingTests(unittest.TestCase):
         pricing = Pricing(self.con)
         # 10K uncached, 80K cache reads, 10K cache writes, 2K visible + 8K reasoning.
         for model, credits, usd in [('gpt-6-sol', 3.9, .161), ('gpt-6-luna', .195, .00805),
-                                    ('gpt-6.1-sol', 3.7, .153)]:
+                                    ('gpt-6.1-sol', 3.7, .153), ('gpt-6.1-terra', 1.85, .0765)]:
             with self.subTest(model=model):
                 row = dict(model=model, **tokens(100000, 80000, 10000, 8000))
                 row['cache_write_input_tokens'] = 10000
@@ -184,12 +184,13 @@ class PricingTests(unittest.TestCase):
         pricing = Pricing(self.con)
         config = pricing.settings()
         for m in config['models']:
-            if m['model'] in ('gpt-6-sol','gpt-6-luna','gpt-6.1-sol'): m['mode'] = 'fast'
+            if m['model'] in ('gpt-6-sol','gpt-6-luna','gpt-6.1-sol','gpt-6.1-terra'): m['mode'] = 'fast'
         pricing.save(config)
         for name, short_usd, long_usd, short_credits in [
                 ('gpt-6-sol', .568, 1.036008, 17.75),
                 ('gpt-6-luna', .0284, .0518004, .8875),
-                ('gpt-6.1-sol', .528, .956008, 16.5)]:
+                ('gpt-6.1-sol', .528, .956008, 16.5),
+                ('gpt-6.1-terra', .264, .478004, 8.25)]:
             with self.subTest(model=name):
                 row = dict(model=name, **tokens(272000, 200000, 10000, 8000))
                 short = pricing.estimate(row)
@@ -212,6 +213,7 @@ class PricingTests(unittest.TestCase):
         config = Pricing(self.con).settings(); models = {m['model']:m for m in config['models']}
         self.assertIn('gpt-6-luna', models)
         self.assertIn('gpt-6.1-sol', models)
+        self.assertIn('gpt-6.1-terra', models)
         self.assertEqual(models['gpt-6-astra'], old)
         self.assertEqual(models['gpt-6-sol'], sol)
         self.assertEqual(config['credit_reference'], reference)
@@ -233,6 +235,25 @@ class PricingTests(unittest.TestCase):
             self.assertIsNotNone(row['costs']['credits']['total'])
             self.assertAlmostEqual(row['costs']['credits']['total'], 3.7)
             self.assertAlmostEqual(row['costs']['usd']['total'], .148)
+        self.assertEqual(overview['requests'], 1)
+        self.assertEqual(overview['costs']['credits']['unpriced_requests'], 0)
+
+    def test_gpt61_terra_imported_usage_is_priced_in_turn_and_overview(self):
+        records = [event('session_meta', dict(id='s', session_id='s', cwd='/project')),
+                   event('turn_context', dict(turn_id='t', model='gpt-6.1-terra')),
+                   event('token_usage_record', dict(response_id='r61terra', thread_id='s',
+                         session_id='s', turn_id='t', root_turn_id='t',
+                         usage=tokens(100000, 80000, 10000, 8000)))]
+        (self.home / 'sessions/a.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in records))
+        Importer(self.con, self.home).scan(self.data)
+        api = API(self.con)
+        turn = api.turn('s', 't', {})
+        overview = api.overview({'model': 'gpt-6.1-terra'})['summary']
+        for row in (turn['requests'][0], turn['summary'], overview):
+            self.assertEqual(row['total_tokens'], 110000)
+            self.assertIsNotNone(row['costs']['credits']['total'])
+            self.assertAlmostEqual(row['costs']['credits']['total'], 1.85)
+            self.assertAlmostEqual(row['costs']['usd']['total'], .074)
         self.assertEqual(overview['requests'], 1)
         self.assertEqual(overview['costs']['credits']['unpriced_requests'], 0)
 

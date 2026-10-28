@@ -85,18 +85,22 @@ python3 -B app.py uninstall-hooks
 
 按每条请求计算，再按每日、模型、session、turn、执行 turn 聚合。令 I 为输入、C 为缓存读取、W 为缓存写入、O 为输出、R 为推理，则五个互斥分类为 `I-C-W, C, W, O-R, R`。各分类乘以对应基价和倍率，再除以 1,000,000。只在展示时格式化小数，聚合前不舍入。工具返回字符数不参与计费；已有 token 总量不变。
 
-默认费率核对日期 **2026-09-14**：
+默认费率核对日期 **2026-10-28**：
 
 | 模型 | Credits 普通输入 / 百万 | USD 普通输入 / 百万 | 缓存读取倍率 | 输出 / 推理倍率 |
 | --- | ---: | ---: | ---: | ---: |
 | gpt-6-astra | 250 | $10 | 0.1 | 5 |
+| gpt-6.1-sol | 50 | $2 | 0.05 | 5 |
+| gpt-6.1-terra | 25 | $1 | 0.05 | 5 |
+| gpt-6-sol | 50 | $2 | 0.1 | 5 |
+| gpt-6-luna | 2.5 | $0.1 | 0.1 | 5 |
 | gpt-5.6-sol | 100 | $4 | 0.1 | 5 |
 | gpt-5.6-terra | 50 | $2 | 0.1 | 6 |
 | gpt-5.6-luna | 5 | $0.2 | 0.1 | 6 |
 
 Sol 为促销价，官方注明至少持续到 2026-11-21。自动审核 `codex-auto-review`、`unknown` 及其他未核实模型默认不定价，允许手动填写。
 
-- API 缓存写入默认 1.25×。单请求输入严格超过 272,000 时，对整个请求输入及缓存应用 2×，输出及推理 1.5×；Fast 另乘 2×。
+- API 缓存写入默认按 30 分钟保留的 1.25×；12 小时保留为 2.5×，需自行调整。单请求输入严格超过 272,000 时，对整个请求输入及缓存应用 2×，输出及推理 1.5×；Fast 另乘 2×。
 - Codex credits 公开费率未单列缓存写入和长上下文加价：本工具明确假设缓存写入 1×、不加长上下文费，可自行修改；Fast 另乘 2.5×。
 - 历史日志缺少可靠的服务档位记录，默认按 Standard。设置 Fast 会应用到该模型的全部历史，不声称识别了真实档位。旧版差分可能涵盖多次请求，按单条记录判断长上下文只是近似。
 - 配置统一用于全历史，没有历史价格时段；不含工具服务费、税费、订阅费。默认值不会联网自动更新覆盖用户配置。
@@ -104,7 +108,7 @@ Sol 为促销价，官方注明至少持续到 2026-11-21。自动审核 `codex-
 
 接口：`GET /api/pricing` 读取配置、默认值及来源；`POST /api/pricing` 保存 `models`、`credit_reference: {name, credits}` 与原始 `revision`（名称 1–80 字符，额度大于 0 且不超过 1e12），需要同源 JSON 和 `X-Token-Lens: 1`。总览、Session、Turn 接口同时返回顶层 `credit_reference`，与本次估算读取同一份配置。旧版本缺少此设置时默认 25,200，旧客户端省略该字段时保留现有配置。各用量接口增加 `costs.credits` / `costs.usd`，含 total、五类 breakdown、priced_requests、unpriced_requests 和 unpriced_tokens。所有记录未定价时 total 为 null；空结果或明确免费时为 0。单请求另含实际用于估算的 effective_rates、mode 和 long_context。
 
-官方来源：[Codex credits](https://learn.chatgpt.com/docs/pricing)、[Fast](https://learn.chatgpt.com/docs/agent-configuration/speed)、[API 缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)。
+官方来源：[GPT-6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Codex credits](https://learn.chatgpt.com/docs/pricing)、[Fast](https://learn.chatgpt.com/docs/agent-configuration/speed)、[API 缓存规则](https://developers.openai.com/api/docs/guides/prompt-caching)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)、[Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra)、[Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna)。
 
 ## 数据与维护
 

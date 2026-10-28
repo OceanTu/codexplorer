@@ -85,7 +85,9 @@ class InstallationTests(unittest.TestCase):
             return json.load(response)
 
     def wait_usage(self):
-        for _ in range(80):
+        # Startup scans can encounter the installer's sync lock and retry after 15s.
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline:
             data = self.api('/api/overview')
             if data['summary']['requests']:
                 return data
