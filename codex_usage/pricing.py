@@ -7,8 +7,9 @@ import re
 UNITS = ('credits', 'usd')
 PARTS = ('input', 'cached', 'cache_write', 'output', 'reasoning')
 VERIFIED_AT = '2026-10-28'
-DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=25200)
+DEFAULT_CREDIT_REFERENCE = dict(name='7 天 ×20 套餐等价', credits=50400)
 SOURCES = [
+    ('Pro 用量更新（2026-10-30 核对）', 'https://help.openai.com/en/articles/9793128-about-chatgpt-pro-tiers'),
     ('Codex credits', 'https://learn.chatgpt.com/docs/pricing'),
     ('Codex Fast', 'https://learn.chatgpt.com/docs/agent-configuration/speed'),
     ('缓存规则', 'https://developers.openai.com/api/docs/guides/prompt-caching'),

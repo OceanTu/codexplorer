@@ -138,7 +138,7 @@ class PricingTests(unittest.TestCase):
         self.con.commit()
         before = API(self.con).overview({})['summary']
         config = Pricing(self.con).settings()
-        self.assertEqual(config['credit_reference'], dict(name='7 天 ×20 套餐等价', credits=25200))
+        self.assertEqual(config['credit_reference'], dict(name='7 天 ×20 套餐等价', credits=50400))
         self.assertEqual(self.con.execute("SELECT value FROM settings WHERE key='pricing'").fetchone()[0], legacy)
         config['credit_reference'] = dict(name='自定义套餐', credits=12600.5)
         saved = Pricing(self.con).save(config)

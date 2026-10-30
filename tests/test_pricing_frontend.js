@@ -36,8 +36,8 @@ assert.equal(vm.runInContext('amount(.0125,"usd",true)',sandbox),'$0.0125', 'Pre
 assert.match(vm.runInContext('costCell(example,"usd")',sandbox),/\$2.00/);
 assert.match(vm.runInContext('costHint(example.costs.usd,"usd")',sandbox),/^\$2.00 usd/);
 assert.equal(vm.runInContext('amount(.0125,"credits",true)',sandbox),'0.0125', 'Do not round editable rate previews');
-assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'100.0%');
-assert.equal(vm.runInContext('creditsShare(100800)',sandbox),'400.0%');
+assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'50.0%');
+assert.equal(vm.runInContext('creditsShare(100800)',sandbox),'200.0%');
 assert.equal(vm.runInContext('creditsShare(0)',sandbox),'0.0%');
 assert.equal(vm.runInContext('creditsShare(20)',sandbox),'<0.1%');
 assert.equal(vm.runInContext('creditsShare(null)',sandbox),'未定价');
@@ -57,7 +57,7 @@ handlers.get('toggle')({target:{id:'metric-details',open:true}});
 assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details" open>/);
 handlers.get('toggle')({target:{id:'metric-details',open:false}});
 assert.match(vm.runInContext('metrics(reference)',sandbox),/<details id="metric-details" class="metric-details">/);
-assert.match(vm.runInContext('metrics(reference)',sandbox),/占 25,200：100.0%/);
+assert.match(vm.runInContext('metrics(reference)',sandbox),/占 50,400：50.0%/);
 assert.match(vm.runInContext('metrics(reference)',sandbox),/已知部分/);
 assert.match(vm.runInContext('costSummary(reference)',sandbox),/7 天 ×20 套餐等价/);
 vm.runInContext("state.data={credit_reference:{name:'自定义 <套餐>',credits:12600}}",sandbox);
@@ -99,15 +99,16 @@ assert.match(el('#content').innerHTML,/参考 Credits 额度/);
 assert.match(el('#content').innerHTML,/套餐预设/);
 assert.match(el('#content').innerHTML,/×1 · 2,520 credits/);
 assert.match(el('#content').innerHTML,/×5 · 12,600 credits/);
-assert.match(el('#content').innerHTML,/×20 · 25,200 credits/);
-assert.match(el('#content').innerHTML,/\$100 套餐（暂定） · 12,600 credits \/ 7 天/);
-assert.match(el('#content').innerHTML,/value="20" selected/);
+assert.match(el('#content').innerHTML,/×20 · 50,400 credits/);
+assert.match(el('#content').innerHTML,/\$100 套餐（暂定） · 25,200 credits \/ 7 天/);
+assert.match(el('#content').innerHTML,/value="custom" selected/);
+assert.equal(vm.runInContext('CREDIT_PRESETS.pro500.credits',sandbox),126000);
 assert.match(el('#content').innerHTML,/自定义/);
 assert.match(el('#content').innerHTML,/美元/);
 // Edits survive subsequent renders and are sent with the original revision.
 vm.runInContext("updatePricingInput({dataset:{priceModel:'0',priceUnit:'usd',priceField:'cached_multiplier'},value:'0.2'});render();",sandbox);
 assert.equal(vm.runInContext('pricingEditor.draft.models[0].usd.cached_multiplier',sandbox),.2);
-for(const [preset,credits] of [['1',2520],['5',12600],['20',25200]]){
+for(const [preset,credits] of [['1',2520],['5',12600],['20',50400]]){
   handlers.get('change')({target:{dataset:{creditPreset:''},value:preset}});
   assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),credits);
   assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.name',sandbox),`7 天 ×${preset} 套餐等价`);
@@ -116,7 +117,7 @@ for(const [preset,credits] of [['1',2520],['5',12600],['20',25200]]){
 }
 handlers.get('change')({target:{dataset:{creditPreset:''},value:'custom'}});
 assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.name',sandbox),'自定义套餐');
-assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),25200);
+assert.equal(vm.runInContext('pricingEditor.draft.credit_reference.credits',sandbox),50400);
 handlers.get('input')({target:{dataset:{creditReference:'name'},value:'新套餐'}});
 handlers.get('input')({target:{dataset:{creditReference:'credits'},value:'12600'}});
 assert.equal(el('[data-credit-preset]').value,'custom', 'A custom name at a preset amount stays custom');
@@ -145,9 +146,13 @@ sandbox.fetch=async(url,options)=>{sent.push({url,options});return{ok:true,json:
   assert.equal(vm.runInContext('creditsShare(25200)',sandbox),'1000.0%');
   handlers.get('change')({target:{dataset:{creditPreset:''},value:'pro100'}});
   await vm.runInContext('savePricing()',sandbox);
-  assert.deepEqual(JSON.parse(sent[2].options.body).credit_reference,{name:'7 天 $100 套餐等价',credits:12600});
+  assert.deepEqual(JSON.parse(sent[2].options.body).credit_reference,{name:'7 天 $100 套餐等价',credits:25200});
   assert.match(el('#content').innerHTML,/value="pro100" selected/);
-  assert.equal(vm.runInContext('creditsShare(12600)',sandbox),'100.0%');
-  assert.equal(vm.runInContext('DEFAULT_CREDIT_REFERENCE.credits',sandbox),25200);
+  assert.equal(vm.runInContext('creditsShare(12600)',sandbox),'50.0%');
+  handlers.get('change')({target:{dataset:{creditPreset:''},value:'pro500'}});
+  await vm.runInContext('savePricing()',sandbox);
+  assert.deepEqual(JSON.parse(sent[3].options.body).credit_reference,{name:'7 天 $500 套餐等价',credits:126000});
+  assert.equal(vm.runInContext('creditsShare(126000)',sandbox),'100.0%');
+  assert.equal(vm.runInContext('DEFAULT_CREDIT_REFERENCE.credits',sandbox),50400);
   console.log('Pricing UI: partial totals, unit sorting, draft preservation and save passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
