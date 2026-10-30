@@ -48,32 +48,17 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Python tests and syntax
+      - name: Python tests
         timeout-minutes: 15
         run: |
-          python -u -B - <<'PY'
-          import faulthandler
-          import sys
-          import unittest
-          class ImmediateErrors(unittest.TextTestResult):
-              def addError(self, test, err):
-                  super().addError(test, err)
-                  self.stream.writeln(self._exc_info_to_string(err, test))
-                  for field in ('stdout', 'stderr'):
-                      output = getattr(err[1], field, None)
-                      if output:
-                          self.stream.writeln(str(output))
-                  root = getattr(test, 'root', None)
-                  if root:
-                      log = root / 'logs/service-output.log'
-                      if log.exists():
-                          self.stream.writeln(log.read_text(errors='replace')[-8000:])
-          faulthandler.dump_traceback_later(90, repeat=True)
-          result = unittest.TextTestRunner(verbosity=2, failfast=True, resultclass=ImmediateErrors).run(unittest.defaultTestLoader.discover('tests'))
-          faulthandler.cancel_dump_traceback_later()
-          sys.exit(not result.wasSuccessful())
-          PY
-          python -m compileall -q app.py manage.py installer.py codex_usage scripts tests
+          if test -f scripts/run_tests.py; then
+            python -u -B scripts/run_tests.py
+          else
+            python -u -B -m unittest discover -s tests -v
+          fi
+
+      - name: Python syntax
+        run: python -m compileall -q app.py manage.py installer.py codex_usage scripts tests
 
       - name: JavaScript tests and syntax
         shell: bash

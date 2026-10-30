@@ -1,0 +1,32 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Python tests
+        run: python -u -B scripts/run_tests.py
+      - name: Python syntax
+        run: python -m compileall -q app.py manage.py installer.py codex_usage scripts tests
+      - name: JavaScript tests and syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in tests/*.js; do node "$file"; done
+          for file in static/*.js; do node --check "$file"; done

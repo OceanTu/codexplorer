@@ -17,6 +17,39 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_loopback_server_starts_without_reverse_dns(self):
+        # Loopback readiness must not wait for a runner's external DNS resolver.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'sitecustomize.py').write_text(
+                "import socket\ndef no_dns(*args, **kwargs):\n"
+                "    raise RuntimeError('reverse DNS must not be used')\n"
+                "socket.getfqdn = no_dns\n")
+            with socket.socket() as reservation:
+                reservation.bind(('127.0.0.1', 0))
+                port = reservation.getsockname()[1]
+            server = subprocess.Popen([sys.executable, '-B', str(ROOT / 'app.py'),
+                '--data-dir', str(root / 'data'), '--codex-home', str(root / 'codex'),
+                'serve', '--port', str(port)],
+                env={**os.environ, 'PYTHONPATH': str(root)},
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            try:
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline and server.poll() is None:
+                    try:
+                        with opener.open('http://127.0.0.1:%s/api/health' % port, timeout=.2) as response:
+                            self.assertEqual(json.load(response)['app'], 'token-lens')
+                            return
+                    except OSError:
+                        time.sleep(.05)
+                self.fail('Loopback server did not start without reverse DNS')
+            finally:
+                server.terminate()
+                stdout, stderr = server.communicate(timeout=5)
+                if server.returncode not in (0, -15):
+                    print(stderr.decode(errors='replace'))
+
     def test_messages_api_recovers_after_rewrite_and_keeps_response_contract(self):
         from test_messages import message, native, call, result
         from codex_usage.importer import Importer

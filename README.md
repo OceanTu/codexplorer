@@ -123,7 +123,7 @@ git push origin v0.2.17
 
 在仓库 Actions 查看运行进度，在 Releases 下载安装包。工作流使用 GitHub 自动提供的 `GITHUB_TOKEN` 和 `contents: write` 权限，不需要配置个人 token 或上传本机 deploy key；仓库需允许使用 GitHub Actions。已有同名 Release 时创建失败，不覆盖已发布产物。
 
-若首次构建失败，可在 Actions → Release → Run workflow 中选择 `main` 并填写已有版本标签重试。手动运行使用当前工作流，但检出并打包指定标签的源码，仍校验其 `VERSION`。Python 测试逐项输出，每 90 秒输出一次卡住时的线程堆栈，并在 15 分钟后超时失败。
+若首次构建失败，可在 Actions → Release → Run workflow 中选择 `main` 并填写已有版本标签重试。手动运行使用当前工作流，但检出并打包指定标签的源码，仍校验其 `VERSION`。Python 测试逐项输出实际耗时，单项超过 180 秒才输出诊断堆栈；发布测试步骤仍有 15 分钟超时。`.github/workflows/tests.yml` 在 main 提交、PR 或手动运行时执行同样的完整测试，Python 语法单列，不创建 Release。服务绑定数值回环地址时跳过 HTTPServer 默认的反向 DNS 查询，避免环境 DNS 故障反复拖慢启动、安装和重启测试。
 
 ## 数据与维护
 

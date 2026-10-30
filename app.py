@@ -18,6 +18,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from codex_usage.api import API
@@ -322,6 +323,12 @@ def serve(args):
                 logger.exception('Incremental scan failed')
 
     class Server(ThreadingHTTPServer):
+        def server_bind(self):
+            # This service binds a numeric loopback address. HTTPServer's default
+            # getfqdn() adds an unnecessary, potentially slow reverse DNS lookup.
+            TCPServer.server_bind(self)
+            self.server_name, self.server_port = self.server_address[:2]
+
         def handle_error(self, request, client_address):
             logger.exception('HTTP handler failed for %s', client_address)
 
