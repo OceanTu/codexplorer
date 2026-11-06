@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -158,7 +159,12 @@ class AccountingTests(unittest.TestCase):
 
     def test_truncation_reimports_without_losing_or_duplicating_history(self):
         self.write(self.exact());self.scan()
-        self.path.write_text('');self.start();self.write(self.exact('r2',at=5));self.scan()
+        before = self.path.stat()
+        self.path.write_text('');self.start();self.write(self.exact('r2',at=5))
+        # Rapid equal-size rewrites can share a timestamp on Windows. Make the
+        # rewrite observable to the metadata-based incremental scan explicitly.
+        os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+        self.scan()
         self.assertEqual(self.summary()['requests'],2)
 
     def test_first_legacy_inherited_baseline_only_counts_last(self):

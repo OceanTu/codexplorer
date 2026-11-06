@@ -1,5 +1,6 @@
 """Exercise the shipped HTTP path, including persistence and write protection."""
 import json
+import contextlib
 import socket
 import subprocess
 import sys
@@ -17,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class PricingRuntimeTests(unittest.TestCase):
     def test_http_save_reprices_history_and_survives_restart(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory() as temp, contextlib.ExitStack() as services:
             home, data = Path(temp)/'codex', Path(temp)/'data'
             (home/'sessions').mkdir(parents=True)
             records = [event('session_meta', dict(id='s', session_id='s')),
@@ -40,7 +41,7 @@ class PricingRuntimeTests(unittest.TestCase):
                 process = subprocess.Popen([sys.executable,'-B',str(ROOT/'app.py'),
                     '--data-dir',str(data),'--codex-home',str(home),'serve','--port',str(port)],
                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                self.addCleanup(lambda: process.poll() is None and (process.terminate(), process.wait(timeout=5)))
+                services.callback(lambda: process.poll() is None and (process.terminate(), process.wait(timeout=5)))
                 for _ in range(60):
                     try:
                         if request('/api/overview')['summary']['requests']: return process

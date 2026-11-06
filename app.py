@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Codex Token Lens: python3 app.py serve | sync | install-hooks."""
 import argparse
-import fcntl
 import hmac
 import json
 import logging
 import mimetypes
 import os
-import shlex
 import shutil
 import signal
 import subprocess
@@ -26,6 +24,7 @@ from codex_usage.importer import Importer
 from codex_usage.messages import MessagesUnavailable, RequestMessages
 from codex_usage.store import connect
 from codex_usage.pricing import Pricing
+from codex_usage.platform_support import background_options, command_line, lock_exclusive
 
 ROOT = Path(__file__).resolve().parent
 HOOK_EVENTS = ('Stop', 'SubagentStop', 'Interrupt', 'SessionEnd')
@@ -35,7 +34,7 @@ def sync(args, quiet=False, progress=None):
     args.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (args.data_dir / 'sync.lock').open('a') as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_exclusive(lock)
         except BlockingIOError:
             return {'busy': True}
         con = connect(args.data_dir)
@@ -71,7 +70,7 @@ def hook(args):
         log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         with (log_dir / 'collector.log').open('ab') as log:
             subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                             start_new_session=True, close_fds=True)
+                             **background_options())
     except Exception as exc:
         # Hook errors must never block, steer or add model context to a user's turn.
         print('Token Lens hook: ' + str(exc), file=sys.stderr)
@@ -79,7 +78,7 @@ def hook(args):
 
 
 def hook_definition(args):
-    command = getattr(args, 'hook_command', None) or shlex.join(
+    command = getattr(args, 'hook_command', None) or command_line(
         [sys.executable, str(ROOT / 'app.py'), '--data-dir', str(args.data_dir),
          '--codex-home', str(args.codex_home), 'hook'])
     return {'hooks': {event: [{'hooks': [{'type': 'command', 'command': command, 'timeout': 3}]}]
@@ -90,7 +89,7 @@ def install_hooks(args, remove=False):
     path = args.codex_home / 'hooks.json'
     if remove and not path.exists():
         return
-    current = json.loads(path.read_text()) if path.exists() else {}
+    current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     if not isinstance(current, dict) or not isinstance(current.get('hooks', {}), dict):
         raise ValueError('Existing hooks.json is not a valid hook object; left unchanged')
     hooks = current.setdefault('hooks', {})
@@ -107,7 +106,7 @@ def install_hooks(args, remove=False):
         if not hooks[event]:
             del hooks[event]
     encoded = json.dumps(current, ensure_ascii=False, indent=2) + '\n'
-    if path.exists() and json.loads(path.read_text()) == current:
+    if path.exists() and json.loads(path.read_text(encoding="utf-8")) == current:
         print('Hooks already match: ' + str(path))
         return
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -134,9 +133,9 @@ def serve(args):
     log_dir = getattr(args, 'log_dir', None) or args.data_dir
     log_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     service_lock = (args.data_dir / 'service.lock').open('a')
-    fcntl.flock(service_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    lock_exclusive(service_lock)
     service_id = getattr(args, 'service_id', '')
-    version = (ROOT / 'VERSION').read_text().strip() if (ROOT / 'VERSION').exists() else 'dev'
+    version = (ROOT / 'VERSION').read_text(encoding="utf-8").strip() if (ROOT / 'VERSION').exists() else 'dev'
     logger = logging.getLogger('token_lens.server')
     logger.setLevel(logging.INFO)
     logger.propagate = False
@@ -236,7 +235,7 @@ def serve(args):
                 con = None
                 try:
                     key_path = args.data_dir / 'telemetry-token'
-                    expected = key_path.read_text().strip() if key_path.exists() else ''
+                    expected = key_path.read_text(encoding="utf-8").strip() if key_path.exists() else ''
                     supplied = self.headers.get('X-Token-Lens-Key', '')
                     if not self.allowed() or self.headers.get('Origin') is not None or not expected or not hmac.compare_digest(expected.encode(), supplied.encode()):
                         return self.send(403, {'error': 'Local telemetry authentication required'})

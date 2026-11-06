@@ -4,6 +4,38 @@
 
 ## 安装包与分发
 
+### Windows
+
+需要原生 Windows Python 3.9+（推荐从 python.org 安装并启用 Python Launcher），无需管理员权限、WSL 或 pip。源码下载后双击 `install.cmd`，或在 PowerShell 中运行：
+
+```powershell
+.\install.cmd --yes --no-autostart
+```
+
+安装到 `%LOCALAPPDATA%\Programs\Token Lens`，开始菜单中生成 `Token Lens` 入口。
+安装完成后可删除下载或解压目录；程序、配置、日志和数据库都保存在安装目录。
+默认启用 hook、关闭登录自启；hook 仍需要在 Codex 中检查并信任，服务的周期扫描不依赖 hook。
+
+```powershell
+# 管理已安装的服务；关闭浏览器不会停止服务
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" open
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" doctor
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" stop
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" autostart on
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" uninstall
+
+# 生成可分发的 Windows ZIP；解压后双击 install.cmd
+py -3 -X utf8 -B scripts/build_release.py --platform windows
+# 仅从源码启动（不安装）
+.\start.cmd
+```
+
+Windows 使用系统文件锁和隐藏后台进程；登录自启使用当前用户的 Startup 入口。
+重复安装会保留数据与设置，失败升级会恢复旧版本，卸载保留统计数据库和配置。
+未修改系统 PATH；管理命令可使用上述完整路径。
+
+### macOS
+
 普通使用推荐下载 `dist/token-lens-v0.2.10-macos.zip`，解压后双击 `install.command`。安装器会将全部运行文件复制到 `~/Library/Application Support/Token Lens/`，启动并检查本地服务。看到安装完成后，可以删除 ZIP 和解压目录；日常双击 `~/Applications/Token Lens.command` 即可打开。
 
 首版支持 macOS，依赖已有 Python 3.9+，不自带运行环境。无需 pip、Node 或 sudo；默认启用 hook、关闭登录自启。程序与统计数据分开保存，支持重复安装、升级备份、失败回退、卸载保留数据。详见 [发行包使用说明](packaging/README.md)。

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,7 +15,9 @@ class ConfigurationTests(unittest.TestCase):
             self.assertIn('127.0.0.1:9876/v1/logs',enabled)
             self.assertIn('log_user_prompt = true',enabled)
             configure(home,data,9876,True);self.assertEqual(path.read_text(),enabled)
-            self.assertEqual((data/'telemetry-token').stat().st_mode & 0o777,0o600)
+            if os.name != 'nt':  # Windows uses inherited user-profile ACLs, not Unix mode bits.
+                self.assertEqual((data/'telemetry-token').stat().st_mode & 0o777,0o600)
+            self.assertEqual(len((data/'telemetry-token').read_text()),64)
             path.write_text('# user edit\n'+enabled)
             configure(home,data,9876,False)
             self.assertEqual(path.read_text(),'# user edit\n'+original)

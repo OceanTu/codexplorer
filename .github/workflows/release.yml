@@ -68,7 +68,9 @@ jobs:
           for file in static/*.js; do node --check "$file"; done
 
       - name: Build installer
-        run: python -B scripts/build_release.py
+        run: |
+          python -B scripts/build_release.py
+          python -B scripts/build_release.py --platform windows
 
       - name: Publish release
         env:
@@ -78,5 +80,6 @@ jobs:
         run: |
           set -euo pipefail
           archive="dist/token-lens-${RELEASE_TAG}-macos.zip"
-          gh release create "$RELEASE_TAG" "$archive" "$archive.sha256" \
+          windows="dist/token-lens-${RELEASE_TAG}-windows.zip"
+          gh release create "$RELEASE_TAG" "$archive" "$archive.sha256" "$windows" "$windows.sha256" \
             --verify-tag --title "Token Lens ${RELEASE_TAG}" --generate-notes

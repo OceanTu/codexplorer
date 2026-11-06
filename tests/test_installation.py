@@ -19,15 +19,21 @@ from unittest.mock import patch
 from codex_usage import lifecycle
 from codex_usage.store import SCHEMA_VERSION
 from codex_usage.installation import backup_database, verify_package
-from scripts.build_release import ROOT, RUNTIME, build
+from scripts.build_release import ROOT, RUNTIME, build as build_release
+from codex_usage.platform_support import WINDOWS
 from test_usage import event, tokens
 
 BASE_VERSION = (ROOT / 'VERSION').read_text().strip()
 NEXT_VERSION = '.'.join(BASE_VERSION.split('.')[:-1] + [str(int(BASE_VERSION.split('.')[-1]) + 1)])
 BROKEN_VERSION = '.'.join(BASE_VERSION.split('.')[:-1] + [str(int(BASE_VERSION.split('.')[-1]) + 2)])
+ENTRIES = ['install.cmd'] if WINDOWS else ['install.sh', 'install.command']
 
 
-@unittest.skipUnless(sys.platform == 'darwin', 'macOS installer integration')
+def build(output, source=ROOT):
+    return build_release(output, source, platform='windows' if WINDOWS else 'macos')
+
+
+@unittest.skipUnless(sys.platform in ('darwin', 'win32'), 'macOS/Windows installer integration')
 class InstallationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='token-lens-install-')
@@ -61,12 +67,14 @@ class InstallationTests(unittest.TestCase):
             lifecycle.agent_path(config).unlink(missing_ok=True)
 
     def install(self, *extra, package=None, success=True):
-        command = ['/bin/sh', str((package or self.package) / 'install.sh'), '--yes',
+        entry = ([sys.executable, '-X', 'utf8', '-B', str((package or self.package) / 'installer.py')]
+                 if WINDOWS else ['/bin/sh', str((package or self.package) / 'install.sh')])
+        command = [*entry, '--yes',
                    '--no-open', '--no-shortcuts', '--install-dir', str(self.root),
                    '--codex-home', str(self.codex), *extra]
         result = subprocess.run(command, capture_output=True, text=True,
                                 timeout=180 if os.environ.get('GITHUB_ACTIONS') == 'true' else 40,
-                                env={**os.environ, 'TOKEN_LENS_PYTHON': sys.executable})
+                                env={**os.environ, 'TOKEN_LENS_PYTHON': sys.executable, 'PYTHONUTF8': '1'})
         if success:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         else:
@@ -74,7 +82,9 @@ class InstallationTests(unittest.TestCase):
         return result
 
     def manage(self, *command):
-        result = subprocess.run([str(self.root / 'bin/token-lens'), *command],
+        entry = ([sys.executable, '-X', 'utf8', '-B', str(self.root / 'bin/manage.py'), '--install-dir', str(self.root)]
+                 if WINDOWS else [str(self.root / 'bin/token-lens')])
+        result = subprocess.run([*entry, *command],
                                 capture_output=True, text=True,
                                 timeout=120 if os.environ.get('GITHUB_ACTIONS') == 'true' else 25)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -99,7 +109,7 @@ class InstallationTests(unittest.TestCase):
     def variant(self, version, broken=False):
         source = self.base / ('source-' + version)
         source.mkdir()
-        for name in list(RUNTIME) + ['install.sh', 'install.command', 'installer.py', 'packaging/README.md']:
+        for name in list(RUNTIME) + ENTRIES + ['installer.py', 'packaging/README.md']:
             target = source / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, target)
@@ -148,7 +158,7 @@ class InstallationTests(unittest.TestCase):
         self.assertEqual(self.api('/api/health')['version'], BASE_VERSION)
         self.manage('stop')
         hook = json.loads(before)['hooks']['Stop'][-1]['hooks'][0]['command']
-        result = subprocess.run(shlex.split(hook), input=json.dumps(dict(hook_event_name='Stop', session_id='s')),
+        result = subprocess.run(hook if WINDOWS else shlex.split(hook), input=json.dumps(dict(hook_event_name='Stop', session_id='s')),
                                 text=True, capture_output=True, timeout=3)
         self.assertEqual(json.loads(result.stdout), {})
         for _ in range(60):
@@ -246,6 +256,14 @@ class InstallationTests(unittest.TestCase):
         self.assertTrue(lifecycle.health(config))
         self.manage('stop')
         self.assertFalse(lifecycle.health(config))
+        if WINDOWS:
+            # Exercise exactly the hidden Startup script Windows will execute.
+            subprocess.run(['cscript.exe', '//B', '//Nologo', str(lifecycle.agent_path(config))],
+                           check=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            deadline = time.monotonic() + 25
+            while not lifecycle.health(config) and time.monotonic() < deadline:
+                time.sleep(.1)
+            self.assertTrue(lifecycle.health(config))
         self.manage('start')
         self.assertEqual(lifecycle.read_config(self.root)['port'], config['port'])
         self.assertTrue(lifecycle.health(config))
@@ -268,8 +286,9 @@ class PackageTests(unittest.TestCase):
                 names = archive.namelist()
                 self.assertFalse(any(part in name.split('/') for name in names
                                      for part in ('.data', 'reports', 'analysis', '__pycache__', 'auth.json')))
-                self.assertEqual(len(names), len(RUNTIME) + 6)
-                self.assertTrue(archive.getinfo(names[0].split('/')[0] + '/install.command').external_attr >> 16 & 0o111)
+                self.assertEqual(len(names), len(RUNTIME) + len(ENTRIES) + 4)
+                if not WINDOWS:
+                    self.assertTrue(archive.getinfo(names[0].split('/')[0] + '/install.command').external_attr >> 16 & 0o111)
                 archive.extractall(root / 'unpacked')
             self.assertEqual(verify_package(next((root / 'unpacked').iterdir()))[0], BASE_VERSION)
             package = next((root / 'unpacked').iterdir())

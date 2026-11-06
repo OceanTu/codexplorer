@@ -16,22 +16,26 @@ RUNTIME = (
     'codex_usage/pricing.py', 'codex_usage/supplemental.py',
     'codex_usage/telemetry.py', 'codex_usage/telemetry_config.py',
     'codex_usage/installation.py',
+    'codex_usage/platform_support.py',
     'static/index.html', 'static/app.js', 'static/pricing.js', 'static/style.css', 'static/favicon.svg',
 )
 
 
-def build(output, source=ROOT):
-    version = (source / 'VERSION').read_text().strip()
+def build(output, source=ROOT, platform='macos'):
+    if platform not in ('macos', 'windows'):
+        raise ValueError('Unsupported release platform: ' + platform)
+    version = (source / 'VERSION').read_text(encoding="utf-8").strip()
     if not re.fullmatch(r'\d+\.\d+\.\d+', version):
         raise ValueError('VERSION must be major.minor.patch')
-    files = {name: (source / name).read_bytes() for name in ('install.command', 'install.sh', 'installer.py', 'VERSION')}
+    entries = ('install.cmd',) if platform == 'windows' else ('install.command', 'install.sh')
+    files = {name: (source / name).read_bytes() for name in (*entries, 'installer.py', 'VERSION')}
     files['README.md'] = (source / 'packaging/README.md').read_bytes()
     files.update({'payload/' + name: (source / name).read_bytes() for name in RUNTIME})
-    manifest = dict(app='token-lens', version=version, platform='macos', python='>=3.9',
+    manifest = dict(app='token-lens', version=version, platform=platform, python='>=3.9',
                     files={name: hashlib.sha256(value).hexdigest() for name, value in sorted(files.items())})
     files['manifest.json'] = (json.dumps(manifest, ensure_ascii=False, indent=2) + '\n').encode()
     output.mkdir(parents=True, exist_ok=True)
-    name = 'token-lens-v%s-macos' % version
+    name = 'token-lens-v%s-%s' % (version, platform)
     archive = output / (name + '.zip')
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as target:
         for path, data in sorted(files.items()):
@@ -49,5 +53,6 @@ def build(output, source=ROOT):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / 'dist')
+    parser.add_argument('--platform', choices=('macos', 'windows'), default='macos')
     args = parser.parse_args()
-    print(build(args.output))
+    print(build(args.output, platform=args.platform))

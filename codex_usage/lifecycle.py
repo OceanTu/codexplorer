@@ -1,10 +1,10 @@
 """Per-user installation and process management; no shell process matching."""
 import argparse
 import contextlib
-import fcntl
 import json
 import os
 import plistlib
+import re
 import shlex
 import shutil
 import signal
@@ -16,9 +16,15 @@ import urllib.request
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from .platform_support import (WINDOWS, background_options, command_line, current_dir,
+    launcher_path, lock_exclusive, windows_script)
 
 
 def default_root():
+    if WINDOWS:
+        # LocalAppData/Programs is the native per-user software location and
+        # avoids MSIX LocalAppData virtualization in packaged parent apps.
+        return Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'Programs/Token Lens'
     return Path.home() / 'Library/Application Support/Token Lens'
 
 
@@ -32,7 +38,16 @@ def atomic_write(path, content, mode=0o600):
         else:
             temp.write_text(content, encoding='utf-8')
         temp.chmod(mode)
-        temp.replace(path)
+        # Windows indexing/antimalware may briefly open a newly written script
+        # without delete sharing. Keep the atomic replace, with a bounded retry.
+        for attempt in range(21):
+            try:
+                temp.replace(path)
+                break
+            except PermissionError:
+                if not WINDOWS or attempt == 20:
+                    raise
+                time.sleep(.05)
     finally:
         temp.unlink(missing_ok=True)
 
@@ -42,8 +57,8 @@ def write_json(path, value):
 
 
 def read_config(root):
-    config = json.loads((root / 'config.json').read_text())
-    marker = json.loads((root / '.token-lens-install.json').read_text())
+    config = json.loads((root / 'config.json').read_text(encoding="utf-8"))
+    marker = json.loads((root / '.token-lens-install.json').read_text(encoding="utf-8"))
     if marker.get('app') != 'token-lens' or marker.get('service_id') != config.get('service_id'):
         raise ValueError('安装标记不匹配，请重新运行安装包修复')
     return config
@@ -54,7 +69,7 @@ def management_lock(root):
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (root / 'management.lock').open('a') as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_exclusive(lock)
         except BlockingIOError:
             raise ValueError('另一个安装或管理操作正在运行，请稍后重试')
         yield
@@ -76,17 +91,24 @@ def health(config):
 def owned_process(pid, service_id):
     if not isinstance(pid, int) or pid <= 1:
         return False
-    result = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'command='],
-                            capture_output=True, text=True)
+    if WINDOWS:
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+            '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); '
+            '(Get-CimInstance Win32_Process -Filter "ProcessId = %d").CommandLine' % pid],
+            capture_output=True, text=True, encoding='utf-8', creationflags=subprocess.CREATE_NO_WINDOW,
+            timeout=10)
+    else:
+        result = subprocess.run(['/bin/ps', '-p', str(pid), '-o', 'command='],
+                                capture_output=True, text=True)
     command = result.stdout.strip()
     # The UUID is unique to this installation. Never trust a stale PID alone.
     return bool(result.returncode == 0 and
-                command.endswith('--service-id ' + service_id) and 'app.py ' in command)
+                command.endswith('--service-id ' + service_id) and re.search(r'app\.py"?\s', command))
 
 
 def process_id(root, config):
     try:
-        record = json.loads((root / 'data/service.json').read_text())
+        record = json.loads((root / 'data/service.json').read_text(encoding="utf-8"))
         if record.get('service_id') == config['service_id'] and owned_process(record.get('pid'), config['service_id']):
             return record['pid']
     except (OSError, ValueError):
@@ -99,7 +121,10 @@ def choose_port(preferred):
     candidates = [preferred] + [p for p in range(8765, 8865) if p != preferred]
     for port in candidates:
         with socket.socket() as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if WINDOWS:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 sock.bind(('127.0.0.1', port))
                 return port
@@ -109,12 +134,15 @@ def choose_port(preferred):
 
 
 def app_command(root, config, command):
-    return [config['python'], '-B', str((root / 'current/app.py').resolve()),
+    return [config['python'], '-X', 'utf8', '-B', str(current_dir(root) / 'app.py'),
             '--data-dir', str(root / 'data'), '--codex-home', config['codex_home'],
             '--log-dir', str(root / 'logs'), command]
 
 
 def agent_path(config):
+    if WINDOWS:
+        return (Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) /
+                'Microsoft/Windows/Start Menu/Programs/Startup' / (config['launch_label'] + '.vbs'))
     return Path.home() / 'Library/LaunchAgents' / (config['launch_label'] + '.plist')
 
 
@@ -128,6 +156,15 @@ def unload_agent(config):
 
 
 def load_agent(root, config):
+    if WINDOWS:
+        # Startup runs a script with a hidden window, including the manager
+        # process that checks whether an instance is already running.
+        arguments = [config['python'], '-X', 'utf8', '-B', str(current_dir(root) / 'manage.py'),
+                     '--install-dir', str(root), 'start']
+        command = subprocess.list2cmdline(arguments).replace('"', '""')
+        atomic_write(agent_path(config), ("' Token Lens: " + config['service_id'] + '\n' +
+                     'CreateObject("WScript.Shell").Run "' + command + '", 0, False\n').encode('utf-16'))
+        return
     if sys.platform != 'darwin':
         raise ValueError('登录自启目前只支持 macOS')
     path = agent_path(config)
@@ -158,7 +195,7 @@ def start(root, config):
     if config.get('autostart'):
         unload_agent(config)
         load_agent(root, config)
-    else:
+    if not config.get('autostart') or WINDOWS:
         # Rotate detached process output before launch; application logs rotate themselves.
         output = root / 'logs/service-output.log'
         if output.exists() and output.stat().st_size > 2 * 1024 * 1024:
@@ -167,7 +204,7 @@ def start(root, config):
             child = subprocess.Popen(app_command(root, config, 'serve') +
                 ['--port', str(config['port']), '--service-id', config['service_id']],
                 cwd=root, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                start_new_session=True, close_fds=True)
+                **background_options())
     for _ in range(100):
         info = health(config)
         if info:
@@ -201,8 +238,10 @@ def stop(root, config):
 
 
 def hook_args(root, config, old_commands=()):
+    command = ([config['python'], '-X', 'utf8', '-B', str(root / 'bin/manage.py'),
+                '--install-dir', str(root), 'hook'] if WINDOWS else [str(root / 'bin/token-lens'), 'hook'])
     return SimpleNamespace(data_dir=root / 'data', codex_home=Path(config['codex_home']),
-                           hook_command=shlex.join([str(root / 'bin/token-lens'), 'hook']),
+                           hook_command=command_line(command),
                            old_hook_commands=old_commands)
 
 
@@ -212,6 +251,31 @@ def set_hooks(root, config, remove=False, old_commands=()):
 
 
 def install_launchers(root, config, shortcuts=True):
+    if WINDOWS:
+        # Stable bootstrap resolves the active version on every invocation, so
+        # installed hook commands do not change or need re-trusting on upgrades.
+        atomic_write(root / 'bin/manage.py',
+            'import sys\nfrom pathlib import Path\n'
+            'root = Path(__file__).resolve().parents[1]\n'
+            'target = (root / "current").read_text(encoding="utf-8").strip()\n'
+            'version = (root / target).resolve()\n'
+            'if not version.is_relative_to((root / "versions").resolve()):\n'
+            '    raise ValueError("Invalid version pointer")\n'
+            'sys.path.insert(0, str(version))\n'
+            'from codex_usage.lifecycle import main\nmain()\n')
+        arguments = [config['python'], '-X', 'utf8', '-B', str(root / 'bin/manage.py'),
+                     '--install-dir', str(root)]
+        atomic_write(launcher_path(root), windows_script(arguments, config['service_id']))
+        if shortcuts:
+            shortcut = shortcut_path()
+            marker = 'rem Token Lens managed shortcut: ' + config['service_id']
+            if not shortcut.exists() or marker in shortcut.read_text(encoding='utf-8'):
+                # CMD uses the system codepage to read batch files. UTF-8 is
+                # selected by the first ASCII-only line before Unicode paths.
+                atomic_write(shortcut, '@chcp 65001 >nul\n' + windows_script(arguments + ['open'], config['service_id']))
+            else:
+                print('保留已有快捷入口：' + str(shortcut))
+        return
     launcher = '#!/bin/sh\n# Token Lens managed launcher\nexec ' + shlex.join(
         [config['python'], '-B', str(root / 'current/manage.py'), '--install-dir', str(root)]) + ' "$@"\n'
     atomic_write(root / 'bin/token-lens', launcher, 0o700)
@@ -226,13 +290,23 @@ def install_launchers(root, config, shortcuts=True):
     shortcut = Path.home() / 'Applications/Token Lens.command'
     content = '#!/bin/sh\n# Token Lens managed shortcut: ' + config['service_id'] + '\n' + shlex.join(
         [str(root / 'bin/token-lens'), 'open']) + '\n'
-    if not shortcut.exists() or ('# Token Lens managed shortcut: ' + config['service_id']) in shortcut.read_text():
+    if not shortcut.exists() or ('# Token Lens managed shortcut: ' + config['service_id']) in shortcut.read_text(encoding="utf-8"):
         atomic_write(shortcut, content, 0o700)
     else:
         print('保留已有快捷入口：' + str(shortcut))
 
 
+def shortcut_path():
+    if WINDOWS:
+        return (Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming')) /
+                'Microsoft/Windows/Start Menu/Programs/Token Lens.cmd')
+    return Path.home() / 'Applications/Token Lens.command'
+
+
 def open_browser(config):
+    if WINDOWS:
+        os.startfile('http://127.0.0.1:%s/' % config['port'])
+        return
     subprocess.run(['/usr/bin/open', 'http://127.0.0.1:%s/' % config['port']], check=True)
 
 
@@ -242,11 +316,11 @@ def doctor(root, config):
     hook_path = Path(config['codex_home']) / 'hooks.json'
     expected = hook_definition(hook_args(root, config))['hooks']
     try:
-        hooks = json.loads(hook_path.read_text()).get('hooks', {})
+        hooks = json.loads(hook_path.read_text(encoding="utf-8")).get('hooks', {})
         hooks_ok = all(expected[event][0] in hooks.get(event, []) for event in expected)
     except (OSError, ValueError, AttributeError):
         hooks_ok = False
-    checks = dict(version=(root / 'current/VERSION').read_text().strip(),
+    checks = dict(version=(current_dir(root) / 'VERSION').read_text(encoding="utf-8").strip(),
                   python=config['python'], python_available=Path(config['python']).is_file(),
                   install_dir=str(root), data_dir=str(root / 'data'),
                   codex_home=config['codex_home'], codex_home_exists=Path(config['codex_home']).is_dir(),
@@ -278,14 +352,19 @@ def uninstall(root, config):
         set_hooks(root, config, remove=True)
     path = agent_path(config)
     if path.exists():
-        value = plistlib.loads(path.read_bytes())
-        if value.get('Label') == config['launch_label']:
-            path.unlink()
+        if WINDOWS:
+            if "' Token Lens: " + config['service_id'] in path.read_text(encoding='utf-16'):
+                path.unlink()
+        else:
+            value = plistlib.loads(path.read_bytes())
+            if value.get('Label') == config['launch_label']:
+                path.unlink()
     link = Path.home() / '.local/bin/token-lens'
     if link.is_symlink() and link.readlink() == root / 'bin/token-lens':
         link.unlink()
-    shortcut = Path.home() / 'Applications/Token Lens.command'
-    if shortcut.is_file() and ('# Token Lens managed shortcut: ' + config['service_id']) in shortcut.read_text():
+    shortcut = shortcut_path()
+    marker = ('rem ' if WINDOWS else '# ') + 'Token Lens managed shortcut: ' + config['service_id']
+    if shortcut.is_file() and marker in shortcut.read_text(encoding='utf-8'):
         shortcut.unlink()
     (root / 'current').unlink(missing_ok=True)
     for name in ('versions', 'bin'):

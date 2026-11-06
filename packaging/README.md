@@ -1,5 +1,28 @@
 # Token Lens · 安装与使用
 
+## Windows 安装
+
+需要原生 Python 3.9+ 和 Python Launcher（python.org 安装器提供）。解压 Windows ZIP 后双击 `install.cmd`，或在 PowerShell 中执行 `.\install.cmd --yes`。
+源码目录的同名入口会先构建并校验安装包，再安装，无需 pip、WSL 或管理员权限。
+
+程序、数据及配置保存在 `%LOCALAPPDATA%\Programs\Token Lens`，开始菜单提供 `Token Lens` 入口。
+安装后可删除下载和解压目录。只监听 `127.0.0.1`，默认关闭登录自启，启用 hook 配置；请在 Codex 中检查并信任新增 hook。周期扫描无需 hook 即可工作。
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" open
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" doctor
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" restart
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" stop
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" autostart on
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" autostart off
+& "$env:LOCALAPPDATA\Programs\Token Lens\bin\token-lens.cmd" uninstall
+```
+
+登录自启使用当前用户的 Startup 目录；卸载保留统计数据和配置。
+可通过 `--install-dir`、`--codex-home`、`--port` 自定义安装路径、日志来源及端口。
+使用指定解释器时，安装前设置 `$env:TOKEN_LENS_PYTHON` 为原生 Python 可执行文件的完整路径。
+以下 `.command`、LaunchAgent 及 `~/Library` 相关说明适用于 macOS。
+
 在本机查看 Codex 的 Session、Turn 和每次请求的 token 消耗，支持展开可见对话。统计不调用模型、不需要 API key，数据留在自己的电脑上。
 
 ## v0.2.19 套餐参考额度

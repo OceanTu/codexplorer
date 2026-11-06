@@ -362,7 +362,7 @@ class Importer:
         accepted = []
         for path in pending:
             try:
-                p = json.loads(path.read_text())
+                p = json.loads(path.read_text(encoding="utf-8"))
                 self.con.execute('INSERT OR IGNORE INTO hook_events VALUES (?,?,?,?,?)',
                                  (p['id'], p['occurred_at'], p['event'], p.get('session_id', ''), p.get('turn_id', '')))
                 accepted.append(path)

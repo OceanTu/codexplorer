@@ -1,6 +1,5 @@
 """Verified local-package installation with transactional version switching."""
 import argparse
-import fcntl
 import hashlib
 import json
 import os
@@ -18,18 +17,20 @@ from codex_usage.lifecycle import (agent_path, atomic_write, default_root, healt
     install_launchers, management_lock, open_browser, read_config, set_hooks, start,
     stop, write_json)
 from codex_usage.store import SCHEMA_VERSION
+from codex_usage.platform_support import (WINDOWS, current_target, launcher_path,
+    lock_exclusive, split_command_line, unlock)
 
 
 def verify_package(package):
     package = Path(package).resolve()
-    manifest = json.loads((package / 'manifest.json').read_text())
-    version = (package / 'VERSION').read_text().strip()
+    manifest = json.loads((package / 'manifest.json').read_text(encoding="utf-8"))
+    version = (package / 'VERSION').read_text(encoding="utf-8").strip()
     if not re.fullmatch(r'\d+\.\d+\.\d+', version) or version != manifest.get('version'):
         raise ValueError('安装包版本信息无效')
     files = manifest.get('files')
     if not isinstance(files, dict) or not files:
         raise ValueError('安装包文件清单无效')
-    actual = {str(p.relative_to(package)) for p in package.rglob('*')
+    actual = {p.relative_to(package).as_posix() for p in package.rglob('*')
               if p.is_file() and p.name != '.DS_Store'}
     if actual != set(files) | {'manifest.json'}:
         raise ValueError('安装包文件不完整或包含额外文件，请重新解压原始 ZIP')
@@ -39,7 +40,7 @@ def verify_package(package):
             raise ValueError('安装包包含无效路径：' + name)
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('安装包校验失败：' + name)
-    if (package / 'payload/VERSION').read_text().strip() != version:
+    if (package / 'payload/VERSION').read_text(encoding="utf-8").strip() != version:
         raise ValueError('程序版本与安装包不一致')
     return version, hashlib.sha256((package / 'manifest.json').read_bytes()).hexdigest()[:12]
 
@@ -70,6 +71,9 @@ def backup_database(source, destination):
 
 
 def point_current(root, target):
+    if WINDOWS:
+        atomic_write(root / 'current', Path(target).as_posix() + '\n')
+        return
     link = root / ('.current-' + uuid.uuid4().hex)
     try:
         link.symlink_to(target)
@@ -84,22 +88,26 @@ def legacy_commands(source, codex_home):
     if not path.exists():
         return []
     found = []
-    for groups in json.loads(path.read_text()).get('hooks', {}).values():
+    for groups in json.loads(path.read_text(encoding="utf-8")).get('hooks', {}).values():
         for group in groups:
             for hook in group.get('hooks', []):
-                try:
-                    bits = shlex.split(hook.get('command', ''))
-                except ValueError:
-                    continue
-                if len(bits) == 7 and bits[1:] == [str(source / 'app.py'), '--data-dir',
-                        str(source / '.data'), '--codex-home', str(codex_home), 'hook']:
-                    found.append(hook['command'])
+                # Accept native Windows quoting and earlier POSIX-quoted source
+                # hooks. Both must identify the explicitly selected source.
+                for parse in ((split_command_line, shlex.split) if WINDOWS else (shlex.split,)):
+                    try:
+                        bits = parse(hook.get('command', ''))
+                    except ValueError:
+                        continue
+                    if len(bits) == 7 and bits[1:] == [str(source / 'app.py'), '--data-dir',
+                            str(source / '.data'), '--codex-home', str(codex_home), 'hook']:
+                        found.append(hook['command'])
+                        break
     return found
 
 
 def install(package, args):
-    if sys.platform != 'darwin':
-        raise ValueError('此发行包支持 macOS；Windows 和 Linux 安装支持尚未提供')
+    if sys.platform not in ('darwin', 'win32'):
+        raise ValueError('此发行包支持 macOS 和 Windows')
     if sys.version_info < (3, 9):
         raise ValueError('需要 Python 3.9 或更新版本')
     version, digest = verify_package(package)
@@ -113,11 +121,14 @@ def install(package, args):
     if root.exists() and any(root.iterdir()) and not (root / '.token-lens-install.json').exists():
         raise ValueError('目标目录已有其他内容，请选择空目录或已有 Token Lens 安装目录')
     if (root / '.token-lens-install.json').exists():
-        if json.loads((root / '.token-lens-install.json').read_text()).get('app') != 'token-lens':
+        if json.loads((root / '.token-lens-install.json').read_text(encoding="utf-8")).get('app') != 'token-lens':
             raise ValueError('目标目录的安装标记无效，未修改该目录')
     print('校验通过：Token Lens ' + version, flush=True)
     print('安装目录：' + str(root), flush=True)
     with management_lock(root):
+        # Resolve after the directory exists as Windows may redirect creation
+        # by a packaged host. Launchers and hooks must share one canonical root.
+        root = root.resolve()
         # Preflight can fail (e.g. missing Codex); leave a recognizable directory
         # so the user can correct the parameter and retry in the same location.
         if not (root / '.token-lens-install.json').exists():
@@ -153,7 +164,7 @@ def install(package, args):
         if args.hooks is not None:
             config['hooks'] = args.hooks
         if args.interactive and not args.yes and args.autostart is None and not old:
-            answer = input('登录 Mac 时自动启动？[y/N] ').strip().lower()
+            answer = input('登录时自动启动？[y/N] ').strip().lower()
             config['autostart'] = answer in ('y', 'yes')
         for name in ('versions', 'data', 'logs', 'backups', 'bin'):
             (root / name).mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -161,8 +172,8 @@ def install(package, args):
         staging = root / 'versions' / ('.staging-' + uuid.uuid4().hex)
         shutil.copytree(package / 'payload', staging, ignore=shutil.ignore_patterns('.DS_Store'))
         # Exercise imports and static assets before touching the active version.
-        check = subprocess.run([config['python'], '-B', str(staging / 'app.py'), '--help'],
-                               capture_output=True, text=True)
+        check = subprocess.run([config['python'], '-X', 'utf8', '-B', str(staging / 'app.py'), '--help'],
+                               capture_output=True, text=True, encoding='utf-8')
         if check.returncode:
             shutil.rmtree(staging)
             raise ValueError('新版本运行检查失败：' + check.stderr.strip())
@@ -177,14 +188,14 @@ def install(package, args):
             shutil.rmtree(staging)
         else:
             staging.rename(target)
-        prior_target = (root / 'current').readlink() if (root / 'current').is_symlink() else None
+        prior_target = current_target(root)
         was_running = bool(old and health(old))
         backup = root / 'backups' / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8])
         hook_path = codex_home / 'hooks.json'
         hook_before = hook_path.read_bytes() if hook_path.exists() else None
         hook_after = None
         old_commands = legacy_commands(args.migrate_from, codex_home) if args.migrate_from else []
-        launch_before = (root / 'bin/token-lens').read_bytes() if (root / 'bin/token-lens').exists() else None
+        launch_before = launcher_path(root).read_bytes() if launcher_path(root).exists() else None
         agent_before = agent_path(config).read_bytes() if agent_path(config).exists() else None
         had_db = (root / 'data/usage.sqlite3').exists()
         data_backup = None
@@ -194,7 +205,7 @@ def install(package, args):
             deadline = time.monotonic() + 20
             while True:
                 try:
-                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    lock_exclusive(lock)
                     break
                 except BlockingIOError:
                     if time.monotonic() > deadline:
@@ -243,9 +254,9 @@ def install(package, args):
                     (root / 'config.json').unlink(missing_ok=True)
                     (root / '.token-lens-install.json').unlink(missing_ok=True)
                 if launch_before is not None:
-                    atomic_write(root / 'bin/token-lens', launch_before, 0o700)
+                    atomic_write(launcher_path(root), launch_before, 0o700)
                 else:
-                    (root / 'bin/token-lens').unlink(missing_ok=True)
+                    launcher_path(root).unlink(missing_ok=True)
                 if hook_after is not None and hook_path.exists() and hook_path.read_bytes() == hook_after:
                     if hook_before is None:
                         hook_path.unlink()
@@ -260,7 +271,7 @@ def install(package, args):
                 agent_path(config).unlink(missing_ok=True)
                 if agent_before is not None:
                     atomic_write(agent_path(config), agent_before)
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                unlock(lock)
                 if old and was_running:
                     start(root, old)
                 if not old:
@@ -272,9 +283,10 @@ def install(package, args):
             agent_path(config).unlink(missing_ok=True)
         print('\n安装完成：Token Lens ' + version)
         print('程序、前端、配置及数据均位于安装目录。可以删除 ZIP 和解压文件夹，不影响使用。')
-        print('管理命令：' + shlex.quote(str(root / 'bin/token-lens')) + ' open')
+        print('管理命令：' + ('& "' + str(launcher_path(root)) + '"' if WINDOWS else shlex.quote(str(launcher_path(root)))) + ' open')
         if not args.no_shortcuts:
-            print('双击入口：~/Applications/Token Lens.command')
+            from codex_usage.lifecycle import shortcut_path
+            print('双击入口：' + str(shortcut_path()))
         if not args.no_start:
             print('看板地址：http://127.0.0.1:%s/' % config['port'])
         if config['hooks']:

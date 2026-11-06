@@ -14,8 +14,8 @@ def configure(home, data, port, enabled):
     home,data=Path(home),Path(data)
     data.mkdir(parents=True,exist_ok=True,mode=0o700)
     path=home/'config.toml';metadata=data/'telemetry-config.json';token_path=data/'telemetry-token'
-    original=path.read_text() if path.exists() else ''
-    saved=json.loads(metadata.read_text()) if metadata.exists() else {}
+    original=path.read_text(encoding="utf-8") if path.exists() else ''
+    saved=json.loads(metadata.read_text(encoding="utf-8")) if metadata.exists() else {}
     prior=saved.get('block')
     if START in original and (not prior or original.count(prior)!=1):
         raise ValueError('本工具的遥测配置已被修改，已保留；请先核对 config.toml')
@@ -23,7 +23,7 @@ def configure(home, data, port, enabled):
     if enabled:
         if re.search(r"^\s*(?:\[\s*[\"']?otel[\"']?\s*(?:\]|\.)|[\"']?otel[\"']?\s*[.=])",remaining,re.M):
             raise ValueError('已有 OTel 配置，未覆盖；请将现有采集器转发至本地，或手动整合')
-        token=token_path.read_text().strip() if token_path.exists() else secrets.token_hex(32)
+        token=token_path.read_text(encoding="utf-8").strip() if token_path.exists() else secrets.token_hex(32)
         block='\n'+START+'\n[otel]\nlog_user_prompt = true\nexporter = { otlp-http = { endpoint = "http://127.0.0.1:%d/v1/logs", protocol = "json", headers = { "X-Token-Lens-Key" = "%s" } } }\n%s\n' % (port,token,END)
         updated=remaining+block
     else:
