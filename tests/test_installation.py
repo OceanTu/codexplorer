@@ -261,8 +261,18 @@ class InstallationTests(unittest.TestCase):
             subprocess.run(['cscript.exe', '//B', '//Nologo', str(lifecycle.agent_path(config))],
                            check=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
             deadline = time.monotonic() + 25
-            while not lifecycle.health(config) and time.monotonic() < deadline:
+            while time.monotonic() < deadline:
+                if lifecycle.health(config):
+                    try:
+                        # The Startup script launches its manager asynchronously.
+                        # HTTP readiness precedes that manager releasing its lock.
+                        with lifecycle.management_lock(self.root):
+                            break
+                    except ValueError:
+                        pass
                 time.sleep(.1)
+            else:
+                self.fail('Startup manager did not finish after service readiness')
             self.assertTrue(lifecycle.health(config))
         self.manage('start')
         self.assertEqual(lifecycle.read_config(self.root)['port'], config['port'])

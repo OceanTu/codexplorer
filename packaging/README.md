@@ -1,5 +1,9 @@
 # Token Lens · 安装与使用
 
+## v0.2.21 Windows 自启检查修复
+
+修复 Windows CI 自启测试中的竞争：服务 HTTP 就绪后，继续等待后台启动管理器释放管理锁，再执行下一条管理命令。保留 v0.2.20 的 GPT-6.2 Astra / Sol 费率，以及 Windows 短路径与长路径按文件系统身份比较的修复。统计口径与运行时管理锁行为不变。
+
 ## Windows 安装
 
 需要原生 Python 3.9+ 和 Python Launcher（python.org 安装器提供）。解压 Windows ZIP 后双击 `install.cmd`，或在 PowerShell 中执行 `.\install.cmd --yes`。
