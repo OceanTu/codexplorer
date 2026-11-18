@@ -1,5 +1,6 @@
 """Run every Python test with per-test timings and immediate CI diagnostics."""
 import faulthandler
+import os
 import sys
 import time
 import unittest
@@ -10,6 +11,16 @@ sys.path.insert(0, str(ROOT))
 
 
 class TimedResult(unittest.TextTestResult):
+    def annotate(self, test, err):
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            detail = (test.id() + '\n' + self._exc_info_to_string(err, test))
+            detail = detail.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+            self.stream.writeln('::error::' + detail)
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err)
+        self.annotate(test, err)
+
     def startTest(self, test):
         faulthandler.dump_traceback_later(180)
         self.started = time.monotonic()
@@ -22,6 +33,7 @@ class TimedResult(unittest.TextTestResult):
 
     def addError(self, test, err):
         super().addError(test, err)
+        self.annotate(test, err)
         self.stream.writeln(self._exc_info_to_string(err, test))
         for field in ('stdout', 'stderr'):
             output = getattr(err[1], field, None)
