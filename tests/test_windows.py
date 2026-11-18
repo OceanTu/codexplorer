@@ -52,7 +52,9 @@ class PlatformTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             info = json.loads(result.stdout)
             self.assertFalse(info['service_running'])
-            self.assertEqual(info['install_dir'], str(root))
+            # Windows TEMP may use an 8.3 alias (RUNNER~1), while the installer
+            # reports its resolved long path. Verify identity, not spelling.
+            self.assertTrue(os.path.samefile(info['install_dir'], root))
             self.assertTrue((root / 'current').is_file())
 
     @unittest.skipUnless(sys.platform == 'win32', 'Windows batch launcher')
