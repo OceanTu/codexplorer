@@ -25,6 +25,16 @@
 
 在本机查看 Codex 的 Session、Turn 和每次请求的 token 消耗，支持展开可见对话。统计不调用模型、不需要 API key，数据留在自己的电脑上。
 
+## v0.2.20 GPT-6.2 兼容
+
+新增 GPT-6.2 Astra / Sol，费率核对日期 2026-11-18。每百万 tokens、Standard 模式，Credits 输入 / 缓存读取 / 输出：Astra **200 / 10 / 1,000**，Sol **50 / 2.5 / 250**；API 美元：Astra **$8 / $0.40 / $40**，Sol **$2 / $0.10 / $10**。推理包含于输出，不重复计费。
+
+两款模型的 Fast 默认整体倍率均为 2×。API 缓存写入默认 30 分钟保留的 1.25×；严格超过 272,000 输入 tokens 时，整条请求输入及缓存 2×、输出 1.5×。Credits 沿用无长上下文加价的估算。当前仍提供 Standard / Fast；Ultrafast 可手动调整整体倍率，6.2 订阅额度为 6×，购买 credits / API 至 2027-02-28 为 3×，之后 6×，不能自动识别。
+
+旧费率和已保存自定义配置继续优先，套餐额度保留。升级后已有 6.2 历史记录自动参与费用估算，无需重扫。同时包含本地服务启动跳过反向 DNS 的修复。
+
+来源：[Codex Credits](https://learn.chatgpt.com/docs/pricing)、[Astra](https://developers.openai.com/api/docs/models/gpt-6.2-astra)、[Sol](https://developers.openai.com/api/docs/models/gpt-6.2-sol)。
+
 ## v0.2.19 套餐参考额度
 
 2026-10-30 核对官方说明：$100、$500 用量翻倍；$200 仅原低额度翻倍到高额度，原高额度保留。默认 / ×20 恢复 50,400，$100 改为 25,200，新增 $500 暂定 126,000 credits / 7 天（按 $200 的 2.5 倍估算）。官方没有公布精确 Credits 额度，以上仍为参考值。已保存配置保留，可在费率设置选择新预设并保存。模型费率和用量计量不变。
