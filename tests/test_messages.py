@@ -113,6 +113,38 @@ class MessageTests(unittest.TestCase):
         self.assertEqual([m['text'] for m in d['input']],['first','second'])
         self.assertEqual(len(d['output']),1)
 
+    def test_mid_turn_steering_mixed_events_retained_without_double_counting(self):
+        self.write(message('user', 'original request'),
+                   event('event_msg', dict(type='user_message', message='original request')),
+                   message('assistant', 'working'),
+                   event('event_msg', dict(type='agent_message', message='working')),
+                   event('event_msg', dict(type='user_message', message='change direction')),
+                   native('r1'), message('user', 'follow up guidance'),
+                   event('event_msg', dict(type='user_message', message='follow up guidance')),
+                   message('assistant', 'updated answer'),
+                   native('r2', 4, usage=plus(tokens(), tokens())))
+        self.scan()
+        first = self.reader.read('response:r1')
+        self.assertEqual([m['text'] for m in first['input']], ['original request', 'change direction'])
+        self.assertEqual([m['text'] for m in first['output']], ['working'])
+        self.assertTrue(any('回复生成期间' in w for w in first['warnings']))
+        second = self.reader.read('response:r2')
+        self.assertEqual([m['text'] for m in second['input']], ['follow up guidance'])
+        self.assertEqual([m['text'] for m in second['output']], ['updated answer'])
+        self.scan()  # Rescans and mirrored prompts do not create usage or turns.
+        self.assertEqual(self.con.execute('SELECT COUNT(*) FROM turns').fetchone()[0], 1)
+        self.assertEqual(self.con.execute('SELECT COUNT(*), SUM(total_tokens) FROM usage').fetchone()[:], (2, 240))
+
+    def test_repeated_steering_text_uses_one_to_one_mirror_matching(self):
+        self.write(message('user', 'same instruction'),
+                   event('event_msg', dict(type='user_message', message='same instruction')),
+                   message('assistant', 'working'),
+                   event('event_msg', dict(type='user_message', message='same instruction')),
+                   native('r1'))
+        self.scan()
+        self.assertEqual([m['text'] for m in self.reader.read('response:r1')['input']],
+                         ['same instruction', 'same instruction'])
+
     def test_media_placeholder_and_unrelated_next_turn_are_not_mixed(self):
         self.write(event('response_item',dict(type='message',role='user',content=[
             {'type':'input_text','text':'看图'},{'type':'input_image','image_url':'data:image/png;base64,SECRETDATA'}])),

@@ -6,6 +6,7 @@ user/tool messages; cached history and internal instructions are not rebuilt.
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path
 
 CHUNK_CHARS = 12000
@@ -277,9 +278,15 @@ class RequestMessages:
             target.append(dict(id=mid, role=role, kind=kind, name=name, call_id=call,
                                timestamp=d.get('timestamp'), text=text, byte_offset=offset))
         # Some old versions only have event_msg, while newer ones mirror both.
-        primary_roles = {p['role'] for p in primary if p['kind'] == 'message'}
+        # A role can contain both native messages and event-only steering.
+        # Match mirrors one-to-one; a repeated identical user instruction may
+        # be intentional and must survive when it has no native counterpart.
+        mirrors = Counter((p['role'], p['text']) for p in primary if p['kind'] == 'message')
         for item in fallback:
-            if item['role'] not in primary_roles:
+            key = (item['role'], item['text'])
+            if mirrors[key]:
+                mirrors[key] -= 1
+            else:
                 primary.append(item)
         return sorted(primary, key=lambda m: m['byte_offset'])
 
